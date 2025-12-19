@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ultimate Pseudo-3D Car Simulator</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #87CEEB; }
+  canvas { display: block; background: #333; }
+  #hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-family: Arial;
+    color: white;
+    background: rgba(0,0,0,0.5);
+    padding: 10px;
+    border-radius: 5px;
+  }
+</style>
+</head>
+<body>
+<div id="hud">
+  Speed: <span id="speed">0</span> km/h<br>
+  Gas: <span id="gas">100</span>%<br>
+  Health: <span id="health">100</span>%<br>
+  Money: $<span id="money">0</span><br>
+  Status: <span id="status">Free</span>
+</div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const roadWidth = 400;
+const laneCount = 3;
+const laneWidth = roadWidth / laneCount;
+const roadStart = canvas.width/2 - roadWidth/2;
+
+// Player
+let player = {
+  lane: 1,
+  y: canvas.height - 150,
+  speed: 0,
+  maxSpeed: 12,
+  gas: 100,
+  health: 100,
+  money: 0,
+  status: "Free",
+  nitro: 100
+};
+
+// Traffic cars
+let traffic = [];
+function spawnTraffic() {
+  for(let i=0;i<10;i++){
+    traffic.push({lane: Math.floor(Math.random()*laneCount), y: Math.random()*-canvas.height, speed:2+Math.random()*4});
+  }
+}
+spawnTraffic();
+
+// Pedestrians
+let pedestrians = [];
+for(let i=0;i<5;i++){
+  pedestrians.push({x: roadStart + laneWidth*Math.floor(Math.random()*laneCount) + laneWidth/2, y: Math.random()*-canvas.height, speed:1+Math.random()*1.5});
+}
+
+// Gas stations
+let gasStations = [];
+for(let i=0;i<3;i++){
+  gasStations.push({lane: Math.floor(Math.random()*laneCount), y: Math.random()*-2000});
+}
+
+// Weather
+let weather = {rain: false, night: false};
+
+const keys = {};
+document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+function update() {
+  // Controls
+  if(keys['w'] && player.gas>0) player.speed += 0.3;
+  if(keys['s']) player.speed -= 0.4;
+  if(keys['a'] && player.lane>0) player.lane -=1;
+  if(keys['d'] && player.lane<laneCount-1) player.lane +=1;
+  if(keys[' '] && player.nitro>0){player.speed +=0.5; player.nitro -=0.5;}
+
+  player.speed *= 0.95;
+  if(player.speed<0) player.speed=0;
+  if(player.speed>0) player.gas -= 0.05;
+
+  // Update traffic
+  for(let car of traffic){
+    car.y += car.speed + player.speed*0.5;
+    if(car.y>canvas.height){car.y=-Math.random()*canvas.height; car.lane=Math.floor(Math.random()*laneCount); car.speed=2+Math.random()*4;}
+    if(car.lane===player.lane && Math.abs(car.y-player.y)<50 && player.status==="Free"){
+      player.health -=20; player.status="Jail"; setTimeout(()=>{player.status="Free"},5000);
+    }
+  }
+
+  // Pedestrians
+  for(let ped of pedestrians){
+    ped.y += ped.speed + player.speed*0.5;
+    if(ped.y>canvas.height) ped.y=-Math.random()*canvas.height;
+    if(Math.abs((player.lane*laneWidth + roadStart + laneWidth/2)-ped.x)<20 && Math.abs(player.y - ped.y)<30 && player.status==="Free"){
+      player.health -=10; player.status="Jail"; setTimeout(()=>{player.status="Free"},5000);
+    }
+  }
+
+  // Gas stations
+  for(let gas of gasStations){
+    gas.y += player.speed;
+    if(gas.y>canvas.height) gas.y=-Math.random()*2000;
+    if(player.lane===gas.lane && Math.abs(player.y-gas.y)<50) player.gas=100;
+  }
+
+  // Update HUD
+  document.getElementById('speed').innerText = Math.floor(player.speed*10);
+  document.getElementById('gas').innerText = Math.floor(player.gas);
+  document.getElementById('health').innerText = Math.floor(player.health);
+  document.getElementById('money').innerText = Math.floor(player.money);
+  document.getElementById('status').innerText = player.status;
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Draw road
+  ctx.fillStyle = '#555';
+  ctx.fillRect(roadStart,0,roadWidth,canvas.height);
+  ctx.strokeStyle='white'; ctx.lineWidth=2; ctx.setLineDash([20,20]);
+  for(let i=1;i<laneCount;i++){
+    ctx.beginPath(); ctx.moveTo(roadStart+i*laneWidth,0); ctx.lineTo(roadStart+i*laneWidth,canvas.height); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Weather effects
+  if(weather.night){ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(0,0,canvas.width,canvas.height);}
+  if(weather.rain){ctx.strokeStyle='rgba(0,0,255,0.2)'; for(let i=0;i<200;i++){ctx.beginPath(); ctx.moveTo(Math.random()*canvas.width, Math.random()*canvas.height); ctx.lineTo(Math.random()*canvas.width, Math.random()*canvas.height+10); ctx.stroke();}}
+
+  // Gas stations
+  ctx.fillStyle='yellow';
+  for(let gas of gasStations){ctx.fillRect(roadStart + gas.lane*laneWidth + laneWidth/2 -15, gas.y-15, 30,30);}
+
+  // Traffic cars
+  ctx.fillStyle='red';
+  for(let car of traffic){ctx.fillRect(roadStart + car.lane*laneWidth + laneWidth/2 -20, car.y-10, 40,20);}
+
+  // Pedestrians
+  ctx.fillStyle='orange';
+  for(let ped of pedestrians){ctx.beginPath(); ctx.arc(ped.x,ped.y,10,0,Math.PI*2); ctx.fill();}
+
+  // Player
+  ctx.fillStyle='blue';
+  ctx.fillRect(roadStart + player.lane*laneWidth + laneWidth/2 -20, player.y-10,40,20);
+}
+
+function loop(){
+  update(); draw(); requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
