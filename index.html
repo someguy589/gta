@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simple Driving Simulator</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #87CEEB; }
+  canvas { display: block; background: #4CAF50; }
+  #hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-family: Arial;
+    background: rgba(255,255,255,0.7);
+    padding: 10px;
+    border-radius: 5px;
+  }
+</style>
+</head>
+<body>
+<div id="hud">
+  Gas: <span id="gas">100</span>%<br>
+  Status: <span id="status">Free</span>
+</div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let car = { x: canvas.width/2, y: canvas.height/2, angle: 0, speed: 0, gas: 100 };
+let pedestrians = [
+  {x: 200, y: 200},
+  {x: 500, y: 400},
+  {x: 800, y: 150}
+];
+let gasStations = [
+  {x: 100, y: 500},
+  {x: 700, y: 300}
+];
+let status = "Free";
+
+const keys = {};
+
+document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+function update() {
+  // Controls
+  if(keys['w'] && car.gas > 0) car.speed += 0.2;
+  if(keys['s']) car.speed -= 0.2;
+  if(keys['a']) car.angle -= 0.05;
+  if(keys['d']) car.angle += 0.05;
+
+  car.x += Math.cos(car.angle) * car.speed;
+  car.y += Math.sin(car.angle) * car.speed;
+
+  // Friction & gas consumption
+  car.speed *= 0.95;
+  if(car.speed > 0) car.gas -= 0.05;
+
+  // Collisions with pedestrians
+  for(let ped of pedestrians) {
+    const dx = car.x - ped.x;
+    const dy = car.y - ped.y;
+    if(Math.sqrt(dx*dx + dy*dy) < 30 && status === "Free") {
+      status = "Jail";
+      car.speed = 0;
+      setTimeout(() => { status = "Free"; }, 5000); // 5 sec for testing
+    }
+  }
+
+  // Gas stations
+  for(let gas of gasStations) {
+    const dx = car.x - gas.x;
+    const dy = car.y - gas.y;
+    if(Math.sqrt(dx*dx + dy*dy) < 40) {
+      car.gas = 100;
+    }
+  }
+
+  // Update HUD
+  document.getElementById('gas').innerText = Math.floor(car.gas);
+  document.getElementById('status').innerText = status;
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Draw gas stations
+  ctx.fillStyle = 'yellow';
+  for(let gas of gasStations) {
+    ctx.fillRect(gas.x-15, gas.y-15, 30, 30);
+  }
+
+  // Draw pedestrians
+  ctx.fillStyle = 'red';
+  for(let ped of pedestrians) {
+    ctx.beginPath();
+    ctx.arc(ped.x, ped.y, 15, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Draw car
+  ctx.save();
+  ctx.translate(car.x, car.y);
+  ctx.rotate(car.angle);
+  ctx.fillStyle = 'blue';
+  ctx.fillRect(-20, -10, 40, 20);
+  ctx.restore();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
