@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Forest Survival</title>
+<style>
+body { margin:0; overflow:hidden; background:black; }
+canvas { display:block; }
+#hud {
+    position:fixed;
+    top:10px; left:10px;
+    color:white;
+    font-family:Arial;
+    background:rgba(0,0,0,.6);
+    padding:8px;
+}
+</style>
+</head>
+<body>
+
+<div id="hud">
+❤️ Health: <span id="hp">100</span><br>
+🎯 Objective: Reach the cabin basement
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth;
+canvas.height = innerHeight;
+
+// WORLD
+const world = { w: 4000, h: 4000 };
+
+// PLAYER
+const player = {
+    x: 500, y: 3500,
+    angle: 0,
+    speed: 3,
+    health: 100,
+    checkpoint: { x: 500, y: 3500 }
+};
+
+// INPUT
+const keys = {};
+addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+let mouseX = 0, mouseY = 0;
+addEventListener("mousemove", e => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+});
+
+// CABIN + BASEMENT (SAFE ZONE)
+const cabin = { x: 3200, y: 600, w: 140, h: 140 };
+const basement = { x: 3250, y: 650, w: 40, h: 40 };
+
+// SAVE AREAS
+const saves = [
+    { x: 800, y: 3000 },
+    { x: 2000, y: 2000 },
+    { x: 2800, y: 1200 }
+];
+
+// MONSTERS
+const monsters = [];
+for (let i=0;i<8;i++){
+    monsters.push({
+        x: Math.random()*world.w,
+        y: Math.random()*world.h,
+        hp: 60
+    });
+}
+
+// BULLETS
+const bullets = [];
+addEventListener("mousedown", () => {
+    bullets.push({
+        x: player.x,
+        y: player.y,
+        a: player.angle,
+        s: 12
+    });
+});
+
+function update(){
+    // Aim
+    player.angle = Math.atan2(
+        mouseY - canvas.height*0.65,
+        mouseX - canvas.width/2
+    );
+
+    let speed = keys["shift"] ? 5 : 3;
+
+    if (keys["w"]) {
+        player.x += Math.cos(player.angle)*speed;
+        player.y += Math.sin(player.angle)*speed;
+    }
+    if (keys["s"]) {
+        player.x -= Math.cos(player.angle)*speed;
+        player.y -= Math.sin(player.angle)*speed;
+    }
+    if (keys["a"]) {
+        player.x += Math.cos(player.angle-Math.PI/2)*speed;
+        player.y += Math.sin(player.angle-Math.PI/2)*speed;
+    }
+    if (keys["d"]) {
+        player.x += Math.cos(player.angle+Math.PI/2)*speed;
+        player.y += Math.sin(player.angle+Math.PI/2)*speed;
+    }
+
+    // Bullets
+    bullets.forEach((b,i)=>{
+        b.x += Math.cos(b.a)*b.s;
+        b.y += Math.sin(b.a)*b.s;
+
+        monsters.forEach((m,mi)=>{
+            if (Math.hypot(b.x-m.x,b.y-m.y)<20){
+                m.hp -= 30;
+                bullets.splice(i,1);
+                if (m.hp<=0) monsters.splice(mi,1);
+            }
+        });
+    });
+
+    // Monsters chase if close
+    monsters.forEach(m=>{
+        const dist = Math.hypot(player.x-m.x,player.y-m.y);
+        if (dist < 300){
+            const a = Math.atan2(player.y-m.y,player.x-m.x);
+            m.x += Math.cos(a)*1.5;
+            m.y += Math.sin(a)*1.5;
+        }
+        if (dist < 25){
+            player.health -= 0.5;
+        }
+    });
+
+    // Save zones
+    saves.forEach(s=>{
+        if (Math.hypot(player.x-s.x,player.y-s.y)<40){
+            player.checkpoint.x = s.x;
+            player.checkpoint.y = s.y;
+        }
+    });
+
+    // Death → respawn at checkpoint
+    if (player.health <= 0){
+        player.x = player.checkpoint.x;
+        player.y = player.checkpoint.y;
+        player.health = 100;
+    }
+
+    document.getElementById("hp").textContent = Math.floor(player.health);
+}
+
+function draw(){
+    const camX = player.x - canvas.width/2;
+    const camY = player.y - canvas.height*0.65;
+
+    // Forest ground
+    ctx.fillStyle="#1f3b1f";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // Trees
+    ctx.fillStyle="#0f2a0f";
+    for(let i=0;i<world.w;i+=200){
+        for(let j=0;j<world.h;j+=200){
+            ctx.beginPath();
+            ctx.arc(i-camX,j-camY,30,0,Math.PI*2);
+            ctx.fill();
+        }
+    }
+
+    // Cabin
+    ctx.fillStyle="#654321";
+    ctx.fillRect(cabin.x-camX,cabin.y-camY,cabin.w,cabin.h);
+
+    // Basement (win zone)
+    ctx.fillStyle="black";
+    ctx.fillRect(basement.x-camX,basement.y-camY,basement.w,basement.h);
+
+    // Save areas
+    ctx.fillStyle="cyan";
+    saves.forEach(s=>{
+        ctx.beginPath();
+        ctx.arc(s.x-camX,s.y-camY,20,0,Math.PI*2);
+        ctx.fill();
+    });
+
+    // Monsters
+    ctx.fillStyle="red";
+    monsters.forEach(m=>{
+        ctx.beginPath();
+        ctx.arc(m.x-camX,m.y-camY,18,0,Math.PI*2);
+        ctx.fill();
+    });
+
+    // Bullets
+    ctx.fillStyle="yellow";
+    bullets.forEach(b=>{
+        ctx.fillRect(b.x-camX,b.y-camY,4,4);
+    });
+
+    // Player (third person)
+    ctx.save();
+    ctx.translate(canvas.width/2, canvas.height*0.65);
+    ctx.rotate(player.angle);
+    ctx.fillStyle="#ddd";
+    ctx.fillRect(-10,-20,20,30);
+    ctx.fillStyle="#999";
+    ctx.fillRect(10,-5,20,6);
+    ctx.restore();
+}
+
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
