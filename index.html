@@ -1,0 +1,88 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Car Simulator</title>
+<style>body { margin: 0; overflow: hidden; }</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+// Scene setup
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
+
+// Camera
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(0, 5, -10);
+
+// Renderer
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(5,10,5);
+scene.add(dirLight);
+
+// Controls (for testing)
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+// Ground (road)
+const roadGeometry = new THREE.PlaneGeometry(50, 2000);
+const roadMaterial = new THREE.MeshStandardMaterial({color:0x555555});
+const road = new THREE.Mesh(roadGeometry, roadMaterial);
+road.rotation.x = -Math.PI/2;
+scene.add(road);
+
+// Player car (cube)
+const carGeometry = new THREE.BoxGeometry(2,1,4);
+const carMaterial = new THREE.MeshStandardMaterial({color:0x0000ff});
+const car = new THREE.Mesh(carGeometry, carMaterial);
+car.position.y = 0.5;
+scene.add(car);
+
+// Variables
+let speed = 0;
+const maxSpeed = 0.5;
+const acceleration = 0.01;
+
+// Controls
+const keys = {};
+document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    // Player controls
+    if(keys['w'] && speed<maxSpeed) speed += acceleration;
+    if(keys['s'] && speed>-maxSpeed) speed -= acceleration;
+    if(keys['a']) car.rotation.y += 0.03;
+    if(keys['d']) car.rotation.y -= 0.03;
+
+    // Move car
+    car.position.x -= Math.sin(car.rotation.y) * speed;
+    car.position.z -= Math.cos(car.rotation.y) * speed;
+
+    // Camera follow
+    camera.position.x = car.position.x + Math.sin(car.rotation.y) * -10;
+    camera.position.z = car.position.z + Math.cos(car.rotation.y) * -10;
+    camera.position.y = car.position.y + 5;
+    camera.lookAt(car.position);
+
+    renderer.render(scene, camera);
+}
+
+animate();
+</script>
+</body>
+</html>
