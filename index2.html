@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Home Alone 2: Running Away</title>
+<style>
+body { margin:0; overflow:hidden; background:#111; }
+canvas { display:block; }
+#hud {
+    position:fixed; top:10px; left:10px;
+    color:white; font-family:Arial;
+    background:rgba(0,0,0,0.6); padding:8px;
+}
+</style>
+</head>
+<body>
+<div id="hud">
+❤️ Health: <span id="hp">100</span><br>
+🏃 Distance to Safe Point: <span id="dist">1000</span>
+</div>
+<canvas id="game"></canvas>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+canvas.width=innerWidth;
+canvas.height=innerHeight;
+
+// ----- PLAYER -----
+const player={
+    x:100, y:500,
+    speed:3,
+    sprint:5,
+    health:100
+};
+
+// ----- INPUT -----
+const keys={};
+addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+
+// ----- MONSTER -----
+const monster={x:1200,y:500,speed:2};
+
+// ----- SAFE POINT -----
+const safePoint={x:1800,y:500,r:30};
+
+// ----- OBSTACLES -----
+const obstacles=[
+    {x:400,y:450,w:50,h:50},
+    {x:700,y:520,w:80,h:60},
+    {x:1200,y:480,w:50,h:80},
+    {x:1500,y:500,w:60,h:60}
+];
+
+// ----- GAME UPDATE -----
+function update(){
+    // Movement
+    let spd = keys["shift"]?player.sprint:player.speed;
+    if(keys["w"]) player.y -= spd;
+    if(keys["s"]) player.y += spd;
+    if(keys["a"]) player.x -= spd;
+    if(keys["d"]) player.x += spd;
+
+    // Collision with obstacles
+    obstacles.forEach(o=>{
+        if(player.x>o.x && player.x<o.x+o.w && player.y>o.y && player.y<o.y+o.h){
+            if(keys["w"]) player.y+=spd;
+            if(keys["s"]) player.y-=spd;
+            if(keys["a"]) player.x+=spd;
+            if(keys["d"]) player.x-=spd;
+        }
+    });
+
+    // Monster follows player
+    const dx=player.x-monster.x;
+    const dy=player.y-monster.y;
+    const dist=Math.hypot(dx,dy);
+    if(dist>0){
+        monster.x += dx/dist * monster.speed;
+        monster.y += dy/dist * monster.speed;
+    }
+
+    // Monster attack
+    if(dist<30){
+        player.health -=1;
+    }
+
+    // Distance to safe point
+    const safeDist=Math.floor(Math.hypot(player.x-safePoint.x, player.y-safePoint.y));
+    document.getElementById("dist").textContent=safeDist;
+
+    // HUD health
+    document.getElementById("hp").textContent=Math.floor(player.health);
+
+    // Check win
+    if(safeDist<30){
+        alert("You reached the safe point! You survived! Game Complete!");
+        window.location.reload();
+    }
+
+    // Check death
+    if(player.health<=0){
+        alert("The monster caught you! Game Over");
+        window.location.reload();
+    }
+}
+
+// ----- DRAW -----
+function draw(){
+    ctx.fillStyle="#111";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // Camera follows player
+    const camX=player.x-canvas.width/2;
+    const camY=player.y-canvas.height/2;
+
+    // Obstacles
+    ctx.fillStyle="#654321";
+    obstacles.forEach(o=>{
+        ctx.fillRect(o.x-camX,o.y-camY,o.w,o.h);
+    });
+
+    // Safe Point
+    ctx.fillStyle="green";
+    ctx.beginPath();
+    ctx.arc(safePoint.x-camX,safePoint.y-camY,safePoint.r,0,Math.PI*2);
+    ctx.fill();
+
+    // Monster
+    ctx.fillStyle="red";
+    ctx.beginPath();
+    ctx.arc(monster.x-camX,monster.y-camY,20,0,Math.PI*2);
+    ctx.fill();
+
+    // Player (1st person view = center crosshair)
+    ctx.strokeStyle="white";
+    ctx.beginPath();
+    ctx.moveTo(canvas.width/2-10,canvas.height/2);
+    ctx.lineTo(canvas.width/2+10,canvas.height/2);
+    ctx.moveTo(canvas.width/2,canvas.height/2-10);
+    ctx.lineTo(canvas.width/2,canvas.height/2+10);
+    ctx.stroke();
+}
+
+// ----- LOOP -----
+function loop(){update();draw();requestAnimationFrame(loop);}
+loop();
+</script>
+</body>
+</html>
