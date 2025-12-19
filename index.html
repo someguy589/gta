@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>GTA Fan Game – First Person</title>
+<style>
+body { margin:0; overflow:hidden; background:black; }
+canvas { display:block; }
+#hud {
+    position:fixed;
+    top:10px; left:10px;
+    color:white;
+    font-family:Arial;
+    background:rgba(0,0,0,.6);
+    padding:8px;
+}
+#crosshair {
+    position:fixed;
+    left:50%; top:50%;
+    width:12px; height:12px;
+    margin:-6px;
+}
+#crosshair:before, #crosshair:after {
+    content:"";
+    position:absolute;
+    background:white;
+}
+#crosshair:before { width:12px; height:2px; top:5px; }
+#crosshair:after { height:12px; width:2px; left:5px; }
+</style>
+</head>
+<body>
+
+<div id="hud">❤️ <span id="hp">100</span></div>
+<div id="crosshair"></div>
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth;
+canvas.height = innerHeight;
+
+const world = { w: 5000, h: 5000 };
+
+const player = {
+    x: 2500,
+    y: 2500,
+    angle: 0,
+    health: 100,
+    speed: 3,
+    inCar: false,
+    car: null
+};
+
+const hospital = { x: 2600, y: 2600 };
+const policeStation = { x: 2000, y: 2000 };
+
+const keys = {};
+addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+canvas.onclick = () => canvas.requestPointerLock();
+addEventListener("mousemove", e => {
+    if (document.pointerLockElement === canvas) {
+        player.angle += e.movementX * 0.002;
+    }
+});
+
+const bullets = [];
+
+addEventListener("mousedown", () => {
+    bullets.push({
+        x: player.x,
+        y: player.y,
+        a: player.angle,
+        s: 12,
+        owner: "player"
+    });
+});
+
+const civilians = [];
+for (let i=0;i<20;i++){
+    civilians.push({
+        x: Math.random()*world.w,
+        y: Math.random()*world.h,
+        dir: Math.random()*Math.PI*2,
+        hostile: false,
+        hp: 40
+    });
+}
+
+const cars = [];
+for (let i=0;i<6;i++){
+    cars.push({
+        x: Math.random()*world.w,
+        y: Math.random()*world.h,
+        angle: 0
+    });
+}
+
+function update(){
+    let speed = player.inCar ? 6 : keys["shift"] ? 5 : 3;
+
+    if (keys["w"]) {
+        player.x += Math.cos(player.angle)*speed;
+        player.y += Math.sin(player.angle)*speed;
+    }
+    if (keys["s"]) {
+        player.x -= Math.cos(player.angle)*speed;
+        player.y -= Math.sin(player.angle)*speed;
+    }
+
+    if (keys["e"]) {
+        cars.forEach(c=>{
+            if (!player.inCar && Math.hypot(player.x-c.x,player.y-c.y)<40){
+                player.inCar = true;
+                player.car = c;
+            }
+        });
+        if (player.inCar) {
+            player.inCar = false;
+            player.car = null;
+        }
+        keys["e"]=false;
+    }
+
+    if (player.inCar && player.car){
+        player.car.x = player.x;
+        player.car.y = player.y;
+    }
+
+    civilians.forEach(c=>{
+        c.x += Math.cos(c.dir)*1;
+        c.y += Math.sin(c.dir)*1;
+        if (Math.random()<0.01) c.dir = Math.random()*Math.PI*2;
+    });
+
+    bullets.forEach((b,i)=>{
+        b.x += Math.cos(b.a)*b.s;
+        b.y += Math.sin(b.a)*b.s;
+
+        civilians.forEach(c=>{
+            if (Math.hypot(b.x-c.x,b.y-c.y)<15){
+                c.hp -= 20;
+                c.hostile = true;
+                bullets.splice(i,1);
+            }
+            if (c.hostile){
+                bullets.push({
+                    x: c.x,
+                    y: c.y,
+                    a: Math.atan2(player.y-c.y,player.x-c.x),
+                    s: 6,
+                    owner: "npc"
+                });
+            }
+        });
+
+        if (b.owner==="npc" && Math.hypot(b.x-player.x,b.y-player.y)<15){
+            player.health -= 10;
+            bullets.splice(i,1);
+        }
+    });
+
+    if (player.health<=0){
+        player.x = hospital.x;
+        player.y = hospital.y;
+        player.health = 100;
+    }
+
+    document.getElementById("hp").textContent = player.health;
+}
+
+function draw(){
+    const camX = player.x - canvas.width/2;
+    const camY = player.y - canvas.height/2;
+
+    ctx.fillStyle="#2b2b2b";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // Hospital
+    ctx.fillStyle="green";
+    ctx.fillRect(hospital.x-camX,hospital.y-camY,80,80);
+
+    // Police Station
+    ctx.fillStyle="blue";
+    ctx.fillRect(policeStation.x-camX,policeStation.y-camY,100,100);
+
+    // Civilians
+    ctx.fillStyle="orange";
+    civilians.forEach(c=>{
+        ctx.beginPath();
+        ctx.arc(c.x-camX,c.y-camY,10,0,Math.PI*2);
+        ctx.fill();
+    });
+
+    // Cars
+    ctx.fillStyle="red";
+    cars.forEach(c=>{
+        ctx.fillRect(c.x-camX,c.y-camY,40,20);
+    });
+
+    // Bullets
+    ctx.fillStyle="yellow";
+    bullets.forEach(b=>{
+        ctx.fillRect(b.x-camX,b.y-camY,4,4);
+    });
+}
+
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
