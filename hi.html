@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>THE HOUSE BELOW</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:Arial,Helvetica,sans-serif}
+body{cursor:none}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+#ui{position:fixed;inset:0;pointer-events:none;color:#ddd}
+#hud{
+ position:absolute;top:20px;left:20px;
+ text-shadow:0 2px 10px #000;
+ font-family:monospace;
+}
+#objective{font-size:16px;color:#ddd}
+#status{margin-top:8px;color:#aaa;font-size:13px}
+#prompt{
+ position:absolute;left:50%;bottom:13%;
+ transform:translateX(-50%);
+ padding:10px 16px;
+ background:#0009;
+ border:1px solid #ffffff20;
+ color:#ddd;
+ opacity:0;
+ transition:.2s;
+ font-family:monospace;
+}
+#message{
+ position:absolute;left:50%;top:12%;
+ transform:translateX(-50%);
+ font-family:Georgia,serif;
+ font-size:22px;
+ color:#ddd;
+ text-align:center;
+ opacity:0;
+ transition:.5s;
+ text-shadow:0 0 15px #000;
+}
+#crosshair{
+ position:absolute;left:50%;top:50%;
+ width:5px;height:5px;
+ border-radius:50%;
+ background:#fff;
+ opacity:.35;
+ transform:translate(-50%,-50%);
+}
+#vignette{
+ position:absolute;inset:0;
+ background:radial-gradient(circle,transparent 25%,rgba(0,0,0,.25) 55%,#000 100%);
+}
+#noise{
+ position:absolute;inset:0;
+ opacity:.045;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='x'%3E%3CfeTurbulence baseFrequency='.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23x)'/%3E%3C/svg%3E");
+ mix-blend-mode:screen;
+}
+#start,#ending{
+ position:fixed;inset:0;
+ display:flex;
+ flex-direction:column;
+ justify-content:center;
+ align-items:center;
+ text-align:center;
+ background:
+ radial-gradient(circle at center,#111 0,#030303 55%,#000 100%);
+ color:white;
+ z-index:20;
+}
+#ending{z-index:30}
+.hidden{display:none!important}
+h1{
+ margin:0;
+ font-family:Georgia,serif;
+ font-size:clamp(45px,9vw,110px);
+ letter-spacing:12px;
+ font-weight:normal;
+ color:#ddd;
+ text-shadow:0 0 35px #650000;
+}
+#start p,#ending p{
+ max-width:650px;
+ color:#777;
+ line-height:1.8;
+}
+button{
+ padding:15px 34px;
+ background:#090909;
+ color:#aaa;
+ border:1px solid #555;
+ font:16px monospace;
+ cursor:pointer;
+}
+button:hover{background:#181818;color:#fff;border-color:#aaa}
+#fade{
+ position:fixed;inset:0;background:#000;
+ opacity:0;pointer-events:none;
+ transition:opacity 1s;
+ z-index:15;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="ui">
+ <div id="hud">
+  <div id="objective">OBJECTIVE: Find the basement key.</div>
+  <div id="status">🔑 KEY: MISSING &nbsp; ♥ SANITY: 100%</div>
+ </div>
+ <div id="prompt"></div>
+ <div id="message"></div>
+ <div id="crosshair"></div>
+ <div id="vignette"></div>
+ <div id="noise"></div>
+</div>
+
+<div id="fade"></div>
+
+<div id="start">
+ <h1>THE HOUSE BELOW</h1>
+ <p>
+ You don't remember entering the house.<br>
+ You remember the door locking behind you.
+ </p>
+ <p>
+ <b>WASD</b> — Walk &nbsp; <b>SHIFT</b> — Run<br>
+ <b>MOUSE</b> — Look &nbsp; <b>E</b> — Interact
+ </p>
+ <button id="begin">ENTER THE HOUSE</button>
+</div>
+
+<div id="ending" class="hidden">
+ <h1 id="endTitle">ESCAPED</h1>
+ <p id="endText"></p>
+ <button onclick="location.reload()">PLAY AGAIN</button>
+</div>
+
+<script>
+/* ============================================================
+   THE HOUSE BELOW
+   Completely rebuilt single-file horror game.
+============================================================ */
+
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+let W=innerWidth,H=innerHeight;
+canvas.width=W;
+canvas.height=H;
+
+addEventListener("resize",()=>{
+ W=innerWidth;H=innerHeight;
+ canvas.width=W;canvas.height=H;
+});
+
+/* ============================================================
+   AUDIO
+============================================================ */
+
+let audio=null;
+
+function initAudio(){
+ try{
+  audio=new (window.AudioContext||window.webkitAudioContext)();
+ }catch(e){}
+}
+
+function tone(freq=200,duration=.1,type="sine",volume=.025){
+ if(!audio)return;
+
+ const o=audio.createOscillator();
+ const g=audio.createGain();
+
+ o.type=type;
+ o.frequency.value=freq;
+
+ g.gain.setValueAtTime(volume,audio.currentTime);
+ g.gain.exponentialRampToValueAtTime(
+  .001,audio.currentTime+duration
+ );
+
+ o.connect(g);
+ g.connect(audio.destination);
+
+ o.start();
+ o.stop(audio.currentTime+duration);
+}
+
+function footstep(){
+ tone(70,.05,"sine",.025);
+ setTimeout(()=>tone(52,.045,"sine",.018),55);
+}
+
+function heartbeat(){
+ tone(58,.12,"sine",.05);
+ setTimeout(()=>tone(45,.1,"sine",.04),150);
+}
+
+function noiseSound(){
+ if(!audio)return;
+
+ const length=Math.floor(audio.sampleRate*.35);
+ const buffer=audio.createBuffer(1,length,audio.sampleRate);
+ const data=buffer.getChannelData(0);
+
+ for(let i=0;i<length;i++)
+  data[i]=(Math.random()*2-1)*.3;
+
+ const source=audio.createBufferSource();
+ const gain=audio.createGain();
+
+ gain.gain.value=.06;
+
+ source.buffer=buffer;
+ source.connect(gain);
+ gain.connect(audio.destination);
+ source.start();
+}
+
+/* ============================================================
+   INPUT
+============================================================ */
+
+const keys={};
+
+addEventListener("keydown",e=>{
+ keys[e.key.toLowerCase()]=true;
+
+ if(["w","a","s","d","shift","e"].includes(e.key.toLowerCase()))
+  e.preventDefault();
+
+ if(e.key.toLowerCase()==="e")
+  interact();
+});
+
+addEventListener("keyup",e=>{
+ keys[e.key.toLowerCase()]=false;
+});
+
+addEventListener("mousemove",e=>{
+ if(!game.started)return;
+
+ if(document.pointerLockElement===document.body){
+  player.angle+=e.movementX*.0025;
+  player.look+=e.movementY*.12;
+  player.look=Math.max(-H*.25,Math.min(H*.25,player.look));
+ }
+});
+
+canvas.addEventListener("click",()=>{
+ if(game.started&&!game.finished)
+  document.body.requestPointerLock?.();
+});
+
+/* ============================================================
+   WORLD
+============================================================ */
+
+const TILE=1;
+
+const world=[
+"##############################",
+"#............#...............#",
+"#............#...............#",
+"#............#...............#",
+"#............#...............#",
+"#............................#",
+"#.######.##################.#",
+"#.#.........................#",
+"#.#.........................#",
+"#.#.........#####...........#",
+"#.#.........#...#...........#",
+"#...........#...#...........#",
+"#############...#############",
+"#...........................#",
+"#...........................#",
+"#......##################...#",
+"#......#................#...#",
+"#......#................#...#",
+"#......#................#...#",
+"#......#................#...#",
+"#......##################...#",
+"#...........................#",
+"#...........................#",
+"##############################"
+];
+
+const MW=world[0].length;
+const MH=world.length;
+
+function isWall(x,y){
+ x=Math.floor(x);
+ y=Math.floor(y);
+
+ if(x<0||y<0||x>=MW||y>=MH)return true;
+
+ return world[y][x]==="#";
+}
+
+function canMove(x,y){
+ const r=.23;
+
+ return !isWall(x-r,y-r)&&
+        !isWall(x+r,y-r)&&
+        !isWall(x-r,y+r)&&
+        !isWall(x+r,y+r);
+}
+
+/* ============================================================
+   OBJECTS
+============================================================ */
+
+const objects=[
+ {
+  id:"key",
+  type:"key",
+  x:25.5,y:18.5,
+  taken:false,
+  name:"Basement Key"
+ },
+ {
+  id:"door",
+  type:"door",
+  x:15.5,y:1.2,
+  locked:true,
+  name:"Front Door"
+ },
+ {
+  id:"note1",
+  type:"note",
+  x:5.5,y:2.5,
+  used:false,
+  name:"Old Note"
+ },
+ {
+  id:"mirror",
+  type:"mirror",
+  x:26.5,y:4.5,
+  used:false,
+  name:"Mirror"
+ }
+];
+
+/* ============================================================
+   PLAYER
+============================================================ */
+
+const player={
+ x:3.5,
+ y:3.5,
+ angle:0,
+ look:0,
+ bob:0,
+ moving:false
+};
+
+const game={
+ started:false,
+ finished:false,
+ time:0,
+ sanity:100,
+ eventTimer:0,
+ whisperTimer:0,
+ monsterActive:false
+};
+
+const monster={
+ x:26.5,
+ y:21.5,
+ active:false,
+ speed:.65
+};
+
+/* ============================================================
+   HELPERS
+============================================================ */
+
+function distance(a,b,c,d){
+ return Math.hypot(a-c,b-d);
+}
+
+function getObjectNear(){
+ let nearest=null;
+ let nd=1.25;
+
+ for(const o of objects){
+  if(o.taken)continue;
+
+  const d=distance(player.x,player.y,o.x,o.y);
+
+  if(d<nd){
+   nearest=o;
+   nd=d;
+  }
+ }
+
+ return nearest;
+}
+
+function showMessage(text,duration=2500){
+ const el=document.getElementById("message");
+
+ el.textContent=text;
+ el.style.opacity=1;
+
+ clearTimeout(showMessage.timer);
+
+ showMessage.timer=setTimeout(()=>{
+  el.style.opacity=0;
+ },duration);
+}
+
+function setPrompt(text){
+ const el=document.getElementById("prompt");
+
+ if(text){
+  el.textContent=text;
+  el.style.opacity=1;
+ }else{
+  el.style.opacity=0;
+ }
+}
+
+/* ============================================================
+   INTERACTION
+============================================================ */
+
+function interact(){
+
+ if(!game.started||game.finished)return;
+
+ const o=getObjectNear();
+
+ if(!o)return;
+
+ if(o.id==="key"){
+  o.taken=true;
+
+  showMessage(
+   "The key is cold. Much colder than it should be.",
+   3500
+  );
+
+  document.getElementById("objective").textContent=
+   "OBJECTIVE: Return to the front door.";
+
+  tone(600,.15);
+  return;
+ }
+
+ if(o.id==="door"){
+
+  const key=objects.find(x=>x.id==="key");
+
+  if(!key.taken){
+   showMessage("Locked.",1200);
+   tone(100,.15);
+  }else{
+   escape();
+  }
+
+  return;
+ }
+
+ if(o.id==="note1"&&!o.used){
+
+  o.used=true;
+
+  showMessage(
+   "\"IF YOU HEAR HER SINGING, DON'T LOOK FOR HER.\"",
+   5000
+  );
+
+  game.sanity-=7;
+  noiseSound();
+
+  return;
+ }
+
+ if(o.id==="mirror"&&!o.used){
+
+  o.used=true;
+
+  showMessage(
+   "Your reflection is smiling.",
+   3000
+  );
+
+  setTimeout(()=>{
+   if(game.started&&!game.finished){
+    game.sanity-=15;
+    showMessage("You didn't smile.",2500);
+    noiseSound();
+   }
+  },1300);
+
+  return;
+ }
+}
+
+/* ============================================================
+   RANDOM HORROR EVENTS
+============================================================ */
+
+function horrorEvent(){
+
+ const events=[
+  ()=>{
+   showMessage("Something knocked from inside the wall.",2200);
+   tone(90,.15,"square",.04);
+   setTimeout(()=>tone(90,.15,"square",.04),350);
+  },
+
+  ()=>{
+   showMessage("You hear footsteps above you.",2200);
+   footstep();
+   setTimeout(footstep,350);
+   setTimeout(footstep,700);
+  },
+
+  ()=>{
+   showMessage("Someone whispered your name.",2200);
+   noiseSound();
+  },
+
+  ()=>{
+   const fade=document.getElementById("fade");
+   fade.style.opacity=.55;
+
+   setTimeout(()=>{
+    fade.style.opacity=0;
+   },80);
+
+   game.sanity-=4;
+  },
+
+  ()=>{
+   showMessage("The house is breathing.",2300);
+   tone(38,.7,"sine",.035);
+  }
+ ];
+
+ events[Math.floor(Math.random()*events.length)]();
+}
+
+/* ============================================================
+   MONSTER
+============================================================ */
+
+function activateMonster(){
+ if(game.monsterActive)return;
+
+ game.monsterActive=true;
+ monster.active=true;
+
+ showMessage("RUN.",1800);
+ tone(70,.5,"sawtooth",.05);
+
+ monster.x=player.x+Math.cos(player.angle+Math.PI)*8;
+ monster.y=player.y+Math.sin(player.angle+Math.PI)*8;
+}
+
+function updateMonster(dt){
+
+ if(!monster.active)return;
+
+ const dx=player.x-monster.x;
+ const dy=player.y-monster.y;
+ const d=Math.hypot(dx,dy)||1;
+
+ monster.x+=(dx/d)*monster.speed*dt;
+ monster.y+=(dy/d)*monster.speed*dt;
+
+ if(d<7){
+  game.sanity-=dt*10;
+  if(Math.random()<dt*2)heartbeat();
+ }
+
+ if(d<1.1){
+  die();
+ }
+}
+
+/* ============================================================
+   PLAYER UPDATE
+============================================================ */
+
+function update(dt){
+
+ if(!game.started||game.finished)return;
+
+ game.time+=dt;
+
+ let forward=0;
+ let side=0;
+
+ if(keys.w)forward++;
+ if(keys.s)forward--;
+ if(keys.a)side--;
+ if(keys.d)side++;
+
+ player.moving=!!(forward||side);
+
+ if(player.moving){
+  player.bob+=dt*(keys.shift?13:8);
+
+  if(Math.random()<dt*3.5)
+   footstep();
+ }
+
+ const length=Math.hypot(forward,side)||1;
+
+ const speed=(keys.shift?4.5:2.6)*dt;
+
+ const fx=Math.cos(player.angle);
+ const fy=Math.sin(player.angle);
+
+ const rx=Math.cos(player.angle+Math.PI/2);
+ const ry=Math.sin(player.angle+Math.PI/2);
+
+ const vx=(fx*forward+rx*side)/length*speed;
+ const vy=(fy*forward+ry*side)/length*speed;
+
+ if(canMove(player.x+vx,player.y))
+  player.x+=vx;
+
+ if(canMove(player.x,player.y+vy))
+  player.y+=vy;
+
+ /* sanity */
+
+ if(!monster.active)
+  game.sanity+=dt*.7;
+
+ game.sanity=Math.max(0,Math.min(100,game.sanity));
+
+ /* random events */
+
+ game.eventTimer+=dt;
+
+ if(game.eventTimer>8+Math.random()*12){
+
+  game.eventTimer=0;
+
+  if(Math.random()<.65)
+   horrorEvent();
+ }
+
+ /* monster appears later */
+
+ if(game.time>35&&!game.monsterActive&&Math.random()<dt*.015)
+  activateMonster();
+
+ updateMonster(dt);
+
+ /* prompt */
+
+ const o=getObjectNear();
+
+ if(o){
+  setPrompt(
+   o.id==="door"
+   ? "Press E — Open Door"
+   : "Press E — Interact"
+  );
+ }else{
+  setPrompt("");
+ }
+
+ /* status */
+
+ const key=objects.find(x=>x.id==="key");
+
+ document.getElementById("status").textContent=
+  `🔑 KEY: ${key.taken?"FOUND":"MISSING"}   ♥ SANITY: ${Math.round(game.sanity)}%`;
+}
+
+/* ============================================================
+   3D RENDERER
+============================================================ */
+
+function camera(){
+ const distanceBehind=4.8;
+
+ return {
+  x:player.x-Math.cos(player.angle)*distanceBehind,
+  y:player.y-Math.sin(player.angle)*distanceBehind
+ };
+}
+
+function project(wx,wy,cam){
+
+ const dx=wx-cam.x;
+ const dy=wy-cam.y;
+
+ const fx=Math.cos(player.angle);
+ const fy=Math.sin(player.angle);
+
+ const rx=-fy;
+ const ry=fx;
+
+ const depth=dx*fx+dy*fy;
+ const side=dx*rx+dy*ry;
+
+ return {
+  depth,
+  x:W/2+(side/depth)*W*.75
+ };
+}
+
+function render(){
+
+ ctx.fillStyle="#020304";
+ ctx.fillRect(0,0,W,H);
+
+ const cam=camera();
+
+ /* sky */
+
+ const sky=ctx.createLinearGradient(0,0,0,H*.55);
+
+ sky.addColorStop(0,"#010203");
+ sky.addColorStop(1,"#141719");
+
+ ctx.fillStyle=sky;
+ ctx.fillRect(0,0,W,H*.55);
+
+ /* floor */
+
+ const floor=ctx.createLinearGradient(0,H*.48,0,H);
+
+ floor.addColorStop(0,"#171717");
+ floor.addColorStop(1,"#020202");
+
+ ctx.fillStyle=floor;
+ ctx.fillRect(0,H*.48,W,H*.52);
+
+ /* walls */
+
+ const walls=[];
+
+ for(let y=0;y<MH;y++){
+  for(let x=0;x<MW;x++){
+
+   if(!isWall(x,y))continue;
+
+   const p=project(x+.5,y+.5,cam);
+
+   if(p.depth>.2){
+    walls.push({
+     x,y,
+     depth:p.depth,
+     screen:p.x
+    });
+   }
+  }
+ }
+
+ walls.sort((a,b)=>b.depth-a.depth);
+
+ for(const wall of walls){
+
+  const d=wall.depth;
+  const size=Math.min(H*2,H/(d*.48));
+
+  if(wall.screen<-size||wall.screen>W+size)continue;
+
+  let light=Math.max(0,1-d/18);
+
+  if(game.sanity<30)
+   light*=.7;
+
+  const r=Math.floor(10+light*38);
+  const g=Math.floor(11+light*36);
+  const b=Math.floor(13+light*39);
+
+  ctx.fillStyle=`rgb(${r},${g},${b})`;
+
+  ctx.fillRect(
+   wall.screen-size*.5,
+   H/2+player.look-size*.65,
+   size,
+   size*1.3
+  );
+
+  /* wall streaks */
+
+  if(Math.random()<.018){
+
+   ctx.fillStyle=`rgba(80,20,20,${.15*light})`;
+
+   ctx.fillRect(
+    wall.screen-size*.2,
+    H/2+player.look-size*.2,
+    size*.04,
+    size*.45
+   );
+  }
+ }
+
+ drawObjects(cam);
+ drawMonster(cam);
+ drawPlayer();
+
+ /* flashlight */
+
+ const flashlight=ctx.createRadialGradient(
+  W/2,H/2,5,
+  W/2,H/2,Math.min(W,H)*.65
+ );
+
+ flashlight.addColorStop(0,"rgba(255,245,220,.13)");
+ flashlight.addColorStop(.35,"rgba(255,245,220,.055)");
+ flashlight.addColorStop(1,"rgba(0,0,0,0)");
+
+ ctx.fillStyle=flashlight;
+ ctx.fillRect(0,0,W,H);
+
+ /* sanity distortion */
+
+ if(game.sanity<45){
+
+  ctx.fillStyle=`rgba(90,0,0,${(45-game.sanity)/500})`;
+  ctx.fillRect(0,0,W,H);
+
+  if(Math.random()<.15){
+   ctx.save();
+   ctx.translate(
+    (Math.random()-.5)*12,
+    (Math.random()-.5)*8
+   );
+   ctx.globalAlpha=.15;
+   ctx.drawImage(canvas,0,0);
+   ctx.restore();
+  }
+ }
+
+ /* vignette */
+
+ const vignette=ctx.createRadialGradient(
+  W/2,H/2,Math.min(W,H)*.18,
+  W/2,H/2,Math.max(W,H)*.7
+ );
+
+ vignette.addColorStop(0,"transparent");
+ vignette.addColorStop(1,"rgba(0,0,0,.85)");
+
+ ctx.fillStyle=vignette;
+ ctx.fillRect(0,0,W,H);
+}
+
+/* ============================================================
+   OBJECT RENDERING
+============================================================ */
+
+function drawObjects(cam){
+
+ for(const o of objects){
+
+  if(o.taken)continue;
+
+  const p=project(o.x,o.y,cam);
+
+  if(p.depth<=.3)continue;
+
+  const size=Math.min(600,H/(p.depth*.55));
+
+  if(p.x<-size||p.x>W+size)continue;
+
+  if(o.type==="key"){
+
+   ctx.save();
+
+   ctx.strokeStyle="#d9b72d";
+   ctx.lineWidth=Math.max(2,size*.05);
+   ctx.shadowColor="#ffd84a";
+   ctx.shadowBlur=25;
+
+   ctx.beginPath();
+
+   ctx.arc(
+    p.x-size*.13,
+    H/2+player.look-size*.15,
+    size*.13,
+    0,Math.PI*2
+   );
+
+   ctx.stroke();
+
+   ctx.beginPath();
+
+   ctx.moveTo(p.x,H/2+player.look-size*.15);
+   ctx.lineTo(
+    p.x+size*.3,
+    H/2+player.look-size*.15
+   );
+
+   ctx.lineTo(
+    p.x+size*.3,
+    H/2+player.look+size*.05
+   );
+
+   ctx.stroke();
+
+   ctx.restore();
+  }
+
+  if(o.type==="note"){
+
+   ctx.fillStyle="#d8d0b0";
+
+   ctx.fillRect(
+    p.x-size*.22,
+    H/2+player.look-size*.3,
+    size*.44,
+    size*.6
+   );
+
+   ctx.fillStyle="#333";
+
+   for(let i=0;i<4;i++){
+    ctx.fillRect(
+     p.x-size*.16,
+     H/2+player.look-size*.18+i*size*.09,
+     size*.32,
+     2
+    );
+   }
+  }
+
+  if(o.type==="mirror"){
+
+   ctx.fillStyle="#19252a";
+
+   ctx.fillRect(
+    p.x-size*.32,
+    H/2+player.look-size*.8,
+    size*.64,
+    size*1.5
+   );
+
+   ctx.strokeStyle="#555";
+   ctx.lineWidth=4;
+   ctx.strokeRect(
+    p.x-size*.32,
+    H/2+player.look-size*.8,
+    size*.64,
+    size*1.5
+   );
+  }
+ }
+
+ /* door always rendered */
+
+ const door=objects.find(o=>o.id==="door");
+ const p=project(door.x,door.y,cam);
+
+ if(p.depth>.3){
+
+  const size=Math.min(700,H/(p.depth*.55));
+
+  ctx.fillStyle=door.locked?"#301313":"#243b2a";
+
+  ctx.fillRect(
+   p.x-size*.4,
+   H/2+player.look-size*.9,
+   size*.8,
+   size*1.8
+  );
+
+  ctx.fillStyle="#080808";
+
+  ctx.beginPath();
+  ctx.arc(
+   p.x+size*.25,
+   H/2+player.look,
+   size*.035,
+   0,Math.PI*2
+  );
+  ctx.fill();
+ }
+}
+
+/* ============================================================
+   THIRD PERSON PLAYER
+============================================================ */
+
+function drawPlayer(){
+
+ const bob=player.moving?
+  Math.sin(player.bob)*5:0;
+
+ const px=W/2;
+ const py=H*.73+bob;
+
+ /* shadow */
+
+ ctx.fillStyle="rgba(0,0,0,.6)";
+ ctx.beginPath();
+
+ ctx.ellipse(
+  px,
+  py+60,
+  38,
+  10,
+  0,0,Math.PI*2
+ );
+
+ ctx.fill();
+
+ /* legs */
+
+ ctx.fillStyle="#101112";
+
+ ctx.fillRect(px-22,py+15,17,48);
+ ctx.fillRect(px+5,py+15,17,48);
+
+ /* shoes */
+
+ ctx.fillStyle="#030303";
+
+ ctx.fillRect(px-25,py+56,23,9);
+ ctx.fillRect(px+3,py+56,23,9);
+
+ /* body */
+
+ const body=ctx.createLinearGradient(
+  px-30,py-25,
+  px+30,py+35
+ );
+
+ body.addColorStop(0,"#303438");
+ body.addColorStop(1,"#080909");
+
+ ctx.fillStyle=body;
+
+ ctx.beginPath();
+ ctx.roundRect(
+  px-29,py-28,58,60,12
+ );
+ ctx.fill();
+
+ /* arms */
+
+ ctx.strokeStyle="#151719";
+ ctx.lineWidth=14;
+ ctx.lineCap="round";
+
+ ctx.beginPath();
+ ctx.moveTo(px-24,py-18);
+ ctx.lineTo(px-43,py+20);
+ ctx.moveTo(px+24,py-18);
+ ctx.lineTo(px+43,py+20);
+ ctx.stroke();
+
+ /* head */
+
+ const head=ctx.createRadialGradient(
+  px-8,py-60,3,
+  px,py-52,30
+ );
+
+ head.addColorStop(0,"#aaa");
+ head.addColorStop(.35,"#555");
+ head.addColorStop(1,"#111");
+
+ ctx.fillStyle=head;
+
+ ctx.beginPath();
+ ctx.arc(px,py-54,28,0,Math.PI*2);
+ ctx.fill();
+
+ /* hair */
+
+ ctx.fillStyle="#070707";
+
+ ctx.beginPath();
+ ctx.arc(px,py-63,28,Math.PI,Math.PI*2);
+ ctx.fill();
+
+ /* shoulders */
+
+ ctx.fillStyle="#222";
+ ctx.fillRect(px-32,py-29,64,10);
+}
+
+/* ============================================================
+   MONSTER RENDER
+============================================================ */
+
+function drawMonster(cam){
+
+ if(!monster.active)return;
+
+ const p=project(monster.x,monster.y,cam);
+
+ if(p.depth<=.3)return;
+
+ const size=Math.min(
+  H*1.8,
+  H/(p.depth*.32)
+ );
+
+ if(p.x<-size||p.x>W+size)return;
+
+ ctx.save();
+
+ const alpha=Math.max(
+  .05,
+  Math.min(.95,1-monsterDistance()/16)
+ );
+
+ ctx.globalAlpha=alpha;
+
+ /* body */
+
+ ctx.fillStyle="#010101";
+ ctx.shadowColor="#000";
+ ctx.shadowBlur=25;
+
+ ctx.beginPath();
+
+ ctx.ellipse(
+  p.x,
+  H/2+player.look,
+  size*.19,
+  size*.65,
+  0,0,Math.PI*2
+ );
+
+ ctx.fill();
+
+ /* head */
+
+ ctx.beginPath();
+
+ ctx.arc(
+  p.x,
+  H/2+player.look-size*.58,
+  size*.19,
+  0,Math.PI*2
+ );
+
+ ctx.fill();
+
+ /* arms */
+
+ ctx.strokeStyle="#020202";
+ ctx.lineWidth=Math.max(4,size*.09);
+ ctx.lineCap="round";
+
+ ctx.beginPath();
+
+ ctx.moveTo(
+  p.x-size*.13,
+  H/2+player.look-size*.35
+ );
+
+ ctx.lineTo(
+  p.x-size*.42,
+  H/2+player.look+size*.15
+ );
+
+ ctx.moveTo(
+  p.x+size*.13,
+  H/2+player.look-size*.35
+ );
+
+ ctx.lineTo(
+  p.x+size*.42,
+  H/2+player.look+size*.15
+ );
+
+ ctx.stroke();
+
+ /* eyes */
+
+ ctx.fillStyle="#ddd";
+ ctx.shadowColor="#fff";
+ ctx.shadowBlur=12;
+
+ ctx.beginPath();
+
+ ctx.arc(
+  p.x-size*.065,
+  H/2+player.look-size*.62,
+  size*.022,
+  0,Math.PI*2
+ );
+
+ ctx.arc(
+  p.x+size*.065,
+  H/2+player.look-size*.62,
+  size*.022,
+  0,Math.PI*2
+ );
+
+ ctx.fill();
+
+ ctx.restore();
+}
+
+function monsterDistance(){
+ return distance(
+  player.x,player.y,
+  monster.x,monster.y
+ );
+}
+
+/* ============================================================
+   END STATES
+============================================================ */
+
+function die(){
+
+ if(game.finished)return;
+
+ game.finished=true;
+
+ document.exitPointerLock?.();
+
+ const ending=document.getElementById("ending");
+
+ document.getElementById("endTitle").textContent=
+  "IT FOUND YOU";
+
+ document.getElementById("endText").textContent=
+  "You ran from the house, but the house had already followed you.";
+
+ ending.classList.remove("hidden");
+
+ noiseSound();
+
+ for(let i=0;i<5;i++)
+  setTimeout(()=>tone(60+i*12,.25,"sawtooth",.05),i*100);
+}
+
+function escape(){
+
+ if(game.finished)return;
+
+ game.finished=true;
+
+ document.exitPointerLock?.();
+
+ const ending=document.getElementById("ending");
+
+ document.getElementById("endTitle").textContent=
+  "YOU ESCAPED";
+
+ document.getElementById("endText").textContent=
+  "The key turned. The door opened. You ran into the night. Just before it slammed shut, you heard something whisper from inside: \"Come back.\"";
+
+ ending.classList.remove("hidden");
+
+ tone(500,.15);
+ setTimeout(()=>tone(800,.25),180);
+}
+
+/* ============================================================
+   START
+============================================================ */
+
+document.getElementById("begin").onclick=()=>{
+
+ game.started=true;
+
+ document.getElementById("start").classList.add("hidden");
+
+ initAudio();
+
+ if(audio?.state==="suspended")
+  audio.resume();
+
+ document.body.requestPointerLock?.();
+
+ showMessage(
+  "Find the key. Don't stay here too long.",
+  3500
+ );
+};
+
+/* ============================================================
+   GAME LOOP
+============================================================ */
+
+let previous=performance.now();
+
+function loop(now){
+
+ const dt=Math.min(.05,(now-previous)/1000);
+ previous=now;
+
+ update(dt);
+ render();
+
+ requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+
+</body>
+</html>
