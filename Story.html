@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stickman RPG: Ragdoll Blood & Quests</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background: #08080c; color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; min-height: 100vh; overflow: hidden;
+        }
+        #game-container {
+            position: relative; width: 960px; height: 500px;
+            box-shadow: 0 0 35px rgba(255, 0, 85, 0.25); border: 2px solid #222;
+        }
+        canvas { background: #0f1015; display: block; }
+        .ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; padding: 15px 20px;
+            display: flex; flex-direction: column; justify-content: space-between;
+        }
+        .top-hud { display: flex; justify-content: space-between; width: 100%; align-items: center; }
+        .stat-box { width: 30%; }
+        .bar-wrap {
+            width: 100%; height: 14px; background: #1a1a24;
+            border: 1px solid #444; border-radius: 7px; overflow: hidden;
+        }
+        .bar-fill { height: 100%; width: 100%; transition: width 0.1s linear; }
+        .hp-fill { background: linear-gradient(90deg, #00ff88, #00b359); }
+        .gold-display { font-size: 20px; font-weight: 900; color: #ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.5); }
+        .quest-tracker {
+            position: absolute; top: 55px; left: 20px;
+            background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 6px;
+            border-left: 3px solid #00e5ff; font-size: 13px; color: #ddd;
+        }
+        .modal {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(8, 8, 12, 0.9); display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+            pointer-events: auto;
+        }
+        .shop-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; width: 80%; }
+        .shop-item {
+            background: #181922; border: 1px solid #333; border-radius: 8px;
+            padding: 12px; display: flex; justify-content: space-between; align-items: center;
+        }
+        button {
+            padding: 10px 24px; font-size: 15px; font-weight: bold;
+            background: #ff0055; color: #fff; border: none; border-radius: 4px;
+            cursor: pointer; transition: all 0.2s; box-shadow: 0 0 10px rgba(255,0,85,0.4);
+        }
+        button:hover { background: #ff3377; transform: scale(1.05); }
+        button:disabled { background: #444; cursor: not-allowed; box-shadow: none; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="960" height="500"></canvas>
+
+    <div class="ui-layer">
+        <div class="top-hud">
+            <div class="stat-box">
+                <div style="color:#00ff88; font-weight:bold; font-size:12px;">PLAYER HEALTH</div>
+                <div class="bar-wrap"><div id="hp-bar" class="bar-fill hp-fill"></div></div>
+            </div>
+            <div class="gold-display" id="gold-text">💰 0 GOLD</div>
+            <div class="stat-box">
+                <div id="zone-text" style="color:#ff0055; font-weight:bold; font-size:12px; text-align:right;">OPEN WORLD</div>
+            </div>
+        </div>
+        <div class="quest-tracker" id="quest-text">Quest: Find the Village Elder (Walk Right)</div>
+    </div>
+
+    <!-- Start / Game Over Modal -->
+    <div id="start-modal" class="modal">
+        <h1 style="font-size: 42px; color: #ff0055; text-shadow: 0 0 15px #ff0055;">RAGDOLL BRAWLER RPG</h1>
+        <p style="color: #aaa; margin: 10px 0 20px;">Open World Quests • Gore & Ragdoll Physics • Boss Shops</p>
+        <button onclick="startGame()">ENTER THE REALM</button>
+    </div>
+
+    <!-- Shop Modal -->
+    <div id="shop-modal" class="modal" style="display: none;">
+        <h2 style="font-size: 32px; color: #ffd700;">BOSS DEFEATED - MERCHANT SHOP</h2>
+        <div class="shop-grid">
+            <div class="shop-item">
+                <div><strong>Damage Upgrade</strong><br><span style="color:#aaa; font-size:12px;">+5 Base Attack</span></div>
+                <button id="buy-dmg" onclick="buyItem('dmg', 50)">50 Gold</button>
+            </div>
+            <div class="shop-item">
+                <div><strong>Max Health Upgrade</strong><br><span style="color:#aaa; font-size:12px;">+30 Max HP & Full Heal</span></div>
+                <button id="buy-hp" onclick="buyItem('hp', 60)">60 Gold</button>
+            </div>
+            <div class="shop-item">
+                <div><strong>Vampirism</strong><br><span style="color:#aaa; font-size:12px;">Heal 3 HP per hit</span></div>
+                <button id="buy-vamp" onclick="buyItem('vamp', 100)">100 Gold</button>
+            </div>
+            <div class="shop-item">
+                <div><strong>Critical Strikes</strong><br><span style="color:#aaa; font-size:12px;">+20% Chance for 2x Damage</span></div>
+                <button id="buy-crit" onclick="buyItem('crit', 80)">80 Gold</button>
+            </div>
+        </div>
+        <button onclick="closeShop()" style="background:#00e5ff; color:#000;">CONTINUE QUEST</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const GROUND_Y = 420;
+const GRAVITY = 0.5;
+
+let cameraX = 0;
+let screenShake = 0;
+let keys = {};
+let bloodStains = [];
+let particles = [];
+let ragdolls = [];
+
+let gold = 0;
+let questStep = 0; // 0: Find NPC, 1: Defeat Minions, 2: Defeat Boss
+let gameRunning = false;
+
+// Player Stats & Upgrades
+let playerStats = {
+    hp: 100, maxHp: 100, attack: 15,
+    vamp: 0, crit: 0
+};
+
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+// Blood Particle
+class BloodParticle {
+    constructor(x, y, vx, vy) {
+        this.x = x; this.y = y;
+        this.vx = vx; this.vy = vy;
+        this.size = Math.random() * 3 + 2;
+        this.life = Math.random() * 20 + 20;
+    }
+    update() {
+        this.vx *= 0.95; this.vy += 0.3;
+        this.x += this.vx; this.y += this.vy;
+        
+        // Ground Collision -> Create Stain
+        if (this.y >= GROUND_Y) {
+            bloodStains.push({ x: this.x, y: GROUND_Y + Math.random() * 4, radius: Math.random() * 5 + 2 });
+            if (bloodStains.length > 300) bloodStains.shift();
+            this.life = 0;
+        }
+        this.life--;
+    }
+    draw() {
+        ctx.fillStyle = '#b30000';
+        ctx.beginPath();
+        ctx.arc(this.x - cameraX, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function spawnBlood(x, y, count, dirX) {
+    screenShake = Math.min(screenShake + count * 0.3, 12);
+    for (let i = 0; i < count; i++) {
+        let vx = (dirX * (Math.random() * 6 + 2)) + (Math.random() * 4 - 2);
+        let vy = (Math.random() * -6) - 1;
+        particles.push(new BloodParticle(x, y, vx, vy));
+    }
+}
+
+// Verlet Integration Physics Ragdoll Engine
+class Ragdoll {
+    constructor(x, y, color, scale = 1, impulseX = 0) {
+        this.color = color;
+        this.scale = scale;
+        this.points = [];
+        this.sticks = [];
+
+        // Skeleton Joints
+        const addPoint = (px, py) => {
+            this.points.push({ x: px, y: py, oldX: px - impulseX + (Math.random()*2-1), oldY: py - (Math.random()*4+2), pinned: false });
+        };
+
+        addPoint(x, y - 50 * scale); // 0: Head
+        addPoint(x, y - 35 * scale); // 1: Neck
+        addPoint(x, y - 15 * scale); // 2: Hip
+        addPoint(x - 15 * scale, y - 30 * scale); // 3: Elbow L
+        addPoint(x + 15 * scale, y - 30 * scale); // 4: Elbow R
+        addPoint(x - 10 * scale, y); // 5: Knee L
+        addPoint(x + 10 * scale, y); // 6: Knee R
+
+        const addStick = (p1, p2, len) => {
+            this.sticks.push({ p1: this.points[p1], p2: this.points[p2], len: len * scale });
+        };
+
+        addStick(0, 1, 15); addStick(1, 2, 20);
+        addStick(1, 3, 18); addStick(1, 4, 18);
+        addStick(2, 5, 20); addStick(2, 6, 20);
+    }
+
+    update() {
+        // Verlet Physics Points
+        this.points.forEach(p => {
+            let vx = (p.x - p.oldX) * 0.97;
+            let vy = (p.y - p.oldY) * 0.97;
+            p.oldX = p.x; p.oldY = p.y;
+            p.x += vx; p.y += vy + GRAVITY;
+
+            // Ground Bounds Collision
+            if (p.y >= GROUND_Y) {
+                p.y = GROUND_Y;
+                p.oldX += (p.x - p.oldX) * 0.3; // Friction
+            }
+        });
+
+        // Satisfy Stick Constraints
+        for (let i = 0; i < 4; i++) {
+            this.sticks.forEach(s => {
+                let dx = s.p2.x - s.p1.x;
+                let dy = s.p2.y - s.p1.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                let diff = (s.len - dist) / dist * 0.5;
+                let offsetX = dx * diff;
+                let offsetY = dy * diff;
+
+                s.p1.x -= offsetX; s.p1.y -= offsetY;
+                s.p2.x += offsetX; s.p2.y += offsetY;
+            });
+        }
+    }
+
+    draw() {
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 3 * this.scale;
+        ctx.lineCap = 'round';
+
+        // Draw Skeleton Lines
+        this.sticks.forEach(s => {
+            ctx.beginPath();
+            ctx.moveTo(s.p1.x - cameraX, s.p1.y);
+            ctx.lineTo(s.p2.x - cameraX, s.p2.y);
+            ctx.stroke();
+        });
+
+        // Draw Head
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.points[0].x - cameraX, this.points[0].y, 6 * this.scale, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+// Entity Class (Player, NPCs, Foes)
+class Entity {
+    constructor(x, color, isNPC = false, scale = 1, isBoss = false) {
+        this.x = x; this.y = GROUND_Y;
+        this.vx = 0; this.vy = 0;
+        this.color = color; this.scale = scale;
+        this.isNPC = isNPC; this.isBoss = isBoss;
+
+        this.hp = (isBoss ? 250 : 60) * scale;
+        this.maxHp = this.hp;
+        this.isGrounded = true;
+        this.facingRight = true;
+        this.state = 'idle';
+        this.stateTimer = 0;
+        this.walkCycle = 0;
+    }
+
+    update(target) {
+        if (this.stateTimer > 0) {
+            this.stateTimer--;
+            if (this.stateTimer === 0) this.state = 'idle';
+        }
+
+        if (this.isNPC) {
+            this.updateAI(target);
+        } else {
+            this.updatePlayerControls(target);
+        }
+
+        this.x += this.vx; this.vy += GRAVITY; this.y += this.vy;
+
+        if (this.y >= GROUND_Y) {
+            this.y = GROUND_Y; this.vy = 0; this.isGrounded = true;
+        }
+
+        if (Math.abs(this.vx) > 0.1 && this.isGrounded) this.walkCycle += 0.25;
+        else this.walkCycle = 0;
+    }
+
+    updatePlayerControls(target) {
+        if (['idle', 'moving'].includes(this.state)) {
+            this.vx = 0; this.state = 'idle';
+            if (keys['a']) { this.vx = -4.5; this.state = 'moving'; this.facingRight = false; }
+            if (keys['d']) { this.vx = 4.5; this.state = 'moving'; this.facingRight = true; }
+            if ((keys['w'] || keys[' ']) && this.isGrounded) { this.vy = -12; this.isGrounded = false; }
+
+            if (keys['j']) this.attack(target, playerStats.attack, 50, 10);
+            else if (keys['k']) this.attack(target, playerStats.attack * 1.6, 65, 18);
+            else if (keys['l']) this.state = 'block';
+        }
+    }
+
+    updateAI(target) {
+        if (!target || this.hp <= 0) return;
+        let dist = target.x - this.x;
+        this.facingRight = dist > 0;
+
+        if (['idle', 'moving'].includes(this.state)) {
+            let range = this.isBoss ? 80 : 45;
+            if (Math.abs(dist) > range) {
+                this.vx = this.facingRight ? 2 : -2;
+                this.state = 'moving';
+            } else {
+                this.vx = 0;
+                if (Math.random() < 0.04) {
+                    this.attack(target, this.isBoss ? 22 : 10, range + 10, 20);
+                }
+            }
+        }
+    }
+
+    attack(target, damage, range, lockTime) {
+        this.state = 'attack'; this.stateTimer = lockTime;
+        let dir = this.facingRight ? 1 : -1;
+        let reach = this.x + (dir * range * this.scale);
+
+        if (target && Math.abs(reach - target.x) < range * this.scale && Math.abs(this.y - target.y) < 50) {
+            let isCrit = !this.isNPC && Math.random() < playerStats.crit;
+            let finalDmg = isCrit ? damage * 2 : damage;
+
+            target.takeDamage(finalDmg, dir * 12 * this.scale);
+            spawnBlood(target.x, target.y - 30 * target.scale, Math.floor(finalDmg / 2), dir);
+
+            if (!this.isNPC && playerStats.vamp > 0) {
+                playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + playerStats.vamp);
+            }
+        }
+    }
+
+    takeDamage(dmg, knockback) {
+        if (this.state === 'block') { dmg *= 0.1; knockback *= 0.2; }
+        
+        if (this.isNPC) {
+            this.hp -= dmg;
+            this.vx += knockback;
+            if (this.hp <= 0) {
+                // Trigger Death Ragdoll Physics
+                ragdolls.push(new Ragdoll(this.x, this.y, this.color, this.scale, knockback));
+                gold += this.isBoss ? 150 : 25;
+            }
+        } else {
+            playerStats.hp = Math.max(0, playerStats.hp - dmg);
+            this.vx += knockback;
+        }
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x - cameraX, this.y);
+        ctx.scale(this.scale, this.scale);
+
+        let dir = this.facingRight ? 1 : -1;
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+
+        let legA = Math.sin(this.walkCycle) * 0.5;
+        let headY = -60, neckY = -45, hipY = -20;
+
+        // Head & Body
+        ctx.beginPath(); ctx.arc(0, headY, 7, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, neckY); ctx.lineTo(0, hipY); ctx.stroke();
+
+        let arm1 = { x: 10 * dir, y: neckY + 10 }, leg1 = { x: Math.sin(legA) * 12, y: 0 };
+        let leg2 = { x: -Math.sin(legA) * 12, y: 0 };
+
+        if (this.state === 'attack') arm1 = { x: 25 * dir, y: neckY };
+        if (this.state === 'block') arm1 = { x: 5 * dir, y: neckY - 8 };
+
+        // Limbs
+        ctx.beginPath(); ctx.moveTo(0, neckY + 2); ctx.lineTo(arm1.x, arm1.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, hipY); ctx.lineTo(leg1.x, leg1.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, hipY); ctx.lineTo(leg2.x, leg2.y); ctx.stroke();
+
+        ctx.restore();
+    }
+}
+
+let player;
+let enemies = [];
+let questNpc = { x: 600, active: true };
+
+function startGame() {
+    document.getElementById('start-modal').style.display = 'none';
+    player = new Entity(100, '#00e5ff');
+    questStep = 0;
+    gold = 0;
+    gameRunning = true;
+    requestAnimationFrame(gameLoop);
+}
+
+function triggerBossShop() {
+    gameRunning = false;
+    document.getElementById('shop-modal').style.display = 'flex';
+    document.getElementById('buy-dmg').innerText = `50 Gold (+5 ATK)`;
+    document.getElementById('buy-hp').innerText = `60 Gold (+30 HP)`;
+}
+
+function buyItem(type, cost) {
+    if (gold < cost) return;
+    gold -= cost;
+    if (type === 'dmg') playerStats.attack += 5;
+    if (type === 'hp') { playerStats.maxHp += 30; playerStats.hp = playerStats.maxHp; }
+    if (type === 'vamp') playerStats.vamp += 3;
+    if (type === 'crit') playerStats.crit += 0.15;
+    document.getElementById('gold-text').innerText = `💰 ${gold} GOLD`;
+}
+
+function closeShop() {
+    document.getElementById('shop-modal').style.display = 'none';
+    gameRunning = true;
+    questStep = 3; // Finished Quests
+    document.getElementById('quest-text').innerText = "Quest Complete: Free Explore the Realm!";
+    requestAnimationFrame(gameLoop);
+}
+
+function updateQuests() {
+    let qText = document.getElementById('quest-text');
+    let zText = document.getElementById('zone-text');
+
+    if (questStep === 0) {
+        qText.innerText = "Quest: Travel right and interact with the Elder (Press E)";
+        if (keys['e'] && Math.abs(player.x - questNpc.x) < 50) {
+            questStep = 1;
+            enemies.push(new Entity(player.x + 400, '#ff0055', true, 1));
+            enemies.push(new Entity(player.x + 550, '#ff0055', true, 1));
+        }
+    } else if (questStep === 1) {
+        qText.innerText = `Quest: Clear the Outpost Foes (${enemies.length} left)`;
+        zText.innerText = "OUTPOST WAR";
+        if (enemies.length === 0) {
+            questStep = 2;
+            let boss = new Entity(player.x + 500, '#ff0000', true, 2.2, true);
+            enemies.push(boss);
+        }
+    } else if (questStep === 2) {
+        qText.innerText = "BOSS QUEST: Defeat the Giant Warlord!";
+        zText.innerText = "WARLORD ARENA";
+        if (enemies.length === 0) {
+            triggerBossShop();
+        }
+    }
+}
+
+function gameLoop() {
+    if (!gameRunning) return;
+
+    // Screen Shake Camera Offset
+    ctx.save();
+    if (screenShake > 0) {
+        ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake);
+        screenShake *= 0.85;
+    }
+
+    // Camera Tracking
+    cameraX = player.x - 200;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Parallax World Environment
+    ctx.fillStyle = '#14151f';
+    ctx.fillRect(0, GROUND_Y, canvas.width * 5, canvas.height - GROUND_Y);
+
+    // Draw Permanent Blood Stains on Ground
+    bloodStains.forEach(s => {
+        ctx.fillStyle = '#660000';
+        ctx.beginPath();
+        ctx.arc(s.x - cameraX, s.y, s.radius, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // Draw NPC Elder
+    if (questStep === 0) {
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText("ELDER (Press E)", questNpc.x - cameraX - 35, GROUND_Y - 70);
+        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(questNpc.x - cameraX, GROUND_Y - 50, 6, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(questNpc.x - cameraX, GROUND_Y - 44); ctx.lineTo(questNpc.x - cameraX, GROUND_Y); ctx.stroke();
+    }
+
+    // Update & Render Physics Particles / Ragdolls
+    particles.forEach((p, idx) => { p.update(); p.draw(); if (p.life <= 0) particles.splice(idx, 1); });
+    ragdolls.forEach(r => { r.update(); r.draw(); });
+
+    // Update Player & Foes
+    let targetEnemy = enemies[0];
+    player.update(targetEnemy);
+    player.draw();
+
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        enemies[i].update(player);
+        enemies[i].draw();
+        if (enemies[i].hp <= 0) enemies.splice(i, 1);
+    }
+
+    updateQuests();
+
+    // Update UI HUD
+    document.getElementById('hp-bar').style.width = `${(playerStats.hp / playerStats.maxHp) * 100}%`;
+    document.getElementById('gold-text').innerText = `💰 ${gold} GOLD`;
+
+    ctx.restore();
+
+    if (playerStats.hp <= 0) {
+        gameRunning = false;
+        document.getElementById('start-modal').style.display = 'flex';
+        return;
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+</script>
+</body>
+</html>
