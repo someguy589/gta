@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stickman Combat</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background: #111;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 400px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            border: 2px solid #333;
+        }
+
+        canvas {
+            background: linear-gradient(to bottom, #1a1a2e, #16213e);
+            display: block;
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        .player-stats {
+            width: 40%;
+        }
+
+        .player-name {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .p1-name { color: #00adb5; }
+        .p2-name { color: #ff2e63; text-align: right; }
+
+        .health-bar-container {
+            width: 100%;
+            height: 20px;
+            background-color: #333;
+            border: 2px solid #555;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .health-bar {
+            height: 100%;
+            width: 100%;
+            transition: width 0.1s ease-out;
+        }
+
+        .p1-health { background-color: #00adb5; }
+        .p2-health { background-color: #ff2e63; float: right; }
+
+        .controls-hint {
+            color: #888;
+            font-size: 12px;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.75);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+        }
+
+        #overlay h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        #overlay p {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #ccc;
+        }
+
+        #start-btn {
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            background: #ff2e63;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+        }
+
+        #start-btn:hover {
+            background: #e01e5a;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        
+        <div class="ui-layer">
+            <div class="hud">
+                <div class="player-stats">
+                    <div class="player-name p1-name">Player 1</div>
+                    <div class="health-bar-container">
+                        <div id="p1-hp" class="health-bar p1-health"></div>
+                    </div>
+                </div>
+                <div class="player-stats">
+                    <div class="player-name p2-name">Player 2</div>
+                    <div class="health-bar-container">
+                        <div id="p2-hp" class="health-bar p2-health"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="controls-hint">
+                P1: A/D (Move) | W (Jump) | F (Punch) | G (Kick) | H (Block)<br>
+                P2: Arrows (Move/Jump) | , (Punch) | . (Kick) | / (Block)
+            </div>
+        </div>
+
+        <div id="overlay">
+            <h1 id="title">STICKMAN COMBAT</h1>
+            <p id="subtitle">Press Start to Play</p>
+            <button id="start-btn" onclick="startGame()">START GAME</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const GRAVITY = 0.6;
+        const GROUND_Y = 320;
+
+        const keys = {};
+
+        window.addEventListener('keydown', e => keys[e.key] = true);
+        window.addEventListener('keyup', e => keys[e.key] = false);
+
+        class Stickman {
+            constructor(x, color, controls, facingRight) {
+                this.x = x;
+                this.y = GROUND_Y;
+                this.vx = 0;
+                this.vy = 0;
+                this.color = color;
+                this.controls = controls;
+                this.facingRight = facingRight;
+                
+                this.hp = 100;
+                this.maxHp = 100;
+                
+                this.isGrounded = true;
+                this.state = 'idle'; // idle, moving, punch, kick, block, hit
+                this.stateTimer = 0;
+                
+                this.width = 40;
+                this.height = 80;
+            }
+
+            update(enemy) {
+                // State Timer Management
+                if (this.stateTimer > 0) {
+                    this.stateTimer--;
+                    if (this.stateTimer === 0) {
+                        this.state = 'idle';
+                    }
+                }
+
+                // Controls Input (if not locked in action)
+                if (['idle', 'moving'].includes(this.state)) {
+                    this.vx = 0;
+                    this.state = 'idle';
+
+                    if (keys[this.controls.left]) {
+                        this.vx = -4;
+                        this.state = 'moving';
+                    }
+                    if (keys[this.controls.right]) {
+                        this.vx = 4;
+                        this.state = 'moving';
+                    }
+
+                    if (keys[this.controls.jump] && this.isGrounded) {
+                        this.vy = -12;
+                        this.isGrounded = false;
+                    }
+
+                    if (keys[this.controls.punch]) {
+                        this.state = 'punch';
+                        this.stateTimer = 15;
+                        this.checkAttack(enemy, 10, 50, 40);
+                    } else if (keys[this.controls.kick]) {
+                        this.state = 'kick';
+                        this.stateTimer = 20;
+                        this.checkAttack(enemy, 15, 60, 30);
+                    } else if (keys[this.controls.block]) {
+                        this.state = 'block';
+                    }
+                }
+
+                // Auto-face enemy when idle
+                if (this.state === 'idle' || this.state === 'moving') {
+                    this.facingRight = this.x < enemy.x;
+                }
+
+                // Apply Physics
+                this.x += this.vx;
+                this.vy += GRAVITY;
+                this.y += this.vy;
+
+                // Ground Collision
+                if (this.y >= GROUND_Y) {
+                    this.y = GROUND_Y;
+                    this.vy = 0;
+                    this.isGrounded = true;
+                }
+
+                // Wall Collision
+                this.x = Math.max(30, Math.min(canvas.width - 30, this.x));
+            }
+
+            checkAttack(enemy, damage, range, knockback) {
+                const dir = this.facingRight ? 1 : -1;
+                const hitBoxX = this.x + (dir * (range / 2));
+                const dist = Math.abs(hitBoxX - enemy.x);
+
+                if (dist < range && Math.abs(this.y - enemy.y) < 40) {
+                    enemy.takeDamage(damage, dir * knockback);
+                }
+            }
+
+            takeDamage(amount, knockback) {
+                if (this.state === 'block') {
+                    amount *= 0.2; // Block reduces damage
+                    knockback *= 0.3;
+                }
+                
+                this.hp = Math.max(0, this.hp - amount);
+                this.vx += knockback;
+                this.state = 'hit';
+                this.stateTimer = 12;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.strokeStyle = this.color;
+                ctx.fillStyle = this.color;
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                const dir = this.facingRight ? 1 : -1;
+                const headRadius = 12;
+                const bodyLength = 35;
+                
+                // Head
+                ctx.beginPath();
+                ctx.arc(this.x, this.y - bodyLength - headRadius * 2, headRadius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Spine
+                const neckY = this.y - bodyLength - headRadius;
+                const hipY = this.y - 15;
+                ctx.beginPath();
+                ctx.moveTo(this.x, neckY);
+                ctx.lineTo(this.x, hipY);
+                ctx.stroke();
+
+                // Limbs Dynamic Posing
+                let arm1 = { x: this.x + 10 * dir, y: neckY + 15 };
+                let arm2 = { x: this.x - 10 * dir, y: neckY + 15 };
+                let leg1 = { x: this.x + 10, y: this.y };
+                let leg2 = { x: this.x - 10, y: this.y };
+
+                if (this.state === 'punch') {
+                    arm1 = { x: this.x + 35 * dir, y: neckY + 2 };
+                } else if (this.state === 'kick') {
+                    leg1 = { x: this.x + 40 * dir, y: hipY - 5 };
+                } else if (this.state === 'block') {
+                    arm1 = { x: this.x + 10 * dir, y: neckY - 5 };
+                    arm2 = { x: this.x + 12 * dir, y: neckY + 5 };
+                } else if (this.state === 'hit') {
+                    this.x -= dir * 1;
+                }
+
+                // Draw Arms
+                ctx.beginPath();
+                ctx.moveTo(this.x, neckY + 5);
+                ctx.lineTo(arm1.x, arm1.y);
+                ctx.moveTo(this.x, neckY + 5);
+                ctx.lineTo(arm2.x, arm2.y);
+                ctx.stroke();
+
+                // Draw Legs
+                ctx.beginPath();
+                ctx.moveTo(this.x, hipY);
+                ctx.lineTo(leg1.x, leg1.y);
+                ctx.moveTo(this.x, hipY);
+                ctx.lineTo(leg2.x, leg2.y);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+        }
+
+        // Initialize Fighters
+        const p1 = new Stickman(200, '#00adb5', {
+            left: 'a', right: 'd', jump: 'w', punch: 'f', kick: 'g', block: 'h'
+        }, true);
+
+        const p2 = new Stickman(600, '#ff2e63', {
+            left: 'ArrowLeft', right: 'ArrowRight', jump: 'ArrowUp', punch: ',', kick: '.', block: '/'
+        }, false);
+
+        let gameRunning = false;
+
+        function startGame() {
+            document.getElementById('overlay').style.display = 'none';
+            p1.hp = 100;
+            p2.hp = 100;
+            p1.x = 200;
+            p2.x = 600;
+            gameRunning = true;
+            gameLoop();
+        }
+
+        function gameOver(winner) {
+            gameRunning = false;
+            const overlay = document.getElementById('overlay');
+            const title = document.getElementById('title');
+            const subtitle = document.getElementById('subtitle');
+            
+            title.innerText = `${winner} WINS!`;
+            subtitle.innerText = "Press Start to Rematch";
+            overlay.style.display = 'flex';
+        }
+
+        function updateUI() {
+            document.getElementById('p1-hp').style.width = `${(p1.hp / p1.maxHp) * 100}%`;
+            document.getElementById('p2-hp').style.width = `${(p2.hp / p2.maxHp) * 100}%`;
+        }
+
+        function drawStage() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Floor
+            ctx.fillStyle = '#222831';
+            ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+            
+            ctx.strokeStyle = '#393e46';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, GROUND_Y);
+            ctx.lineTo(canvas.width, GROUND_Y);
+            ctx.stroke();
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            // Updates
+            p1.update(p2);
+            p2.update(p1);
+            updateUI();
+
+            // Render
+            drawStage();
+            p1.draw();
+            p2.draw();
+
+            // Win condition check
+            if (p1.hp <= 0) {
+                gameOver("PLAYER 2");
+                return;
+            } else if (p2.hp <= 0) {
+                gameOver("PLAYER 1");
+                return;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Draw initial static stage
+        drawStage();
+    </script>
+</body>
+</html>
