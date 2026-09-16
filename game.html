@@ -1,1 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stickman City Auto: Ultimate Open World</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background: #08080d; color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; min-height: 100vh; overflow: hidden;
+        }
+        #game-container {
+            position: relative; width: 1000px; height: 580px;
+            box-shadow: 0 0 40px rgba(0, 255, 136, 0.2); border: 2px solid #222;
+        }
+        canvas { background: #3a3d45; display: block; cursor: crosshair; }
+        .ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; padding: 15px 20px;
+            display: flex; flex-direction: column; justify-content: space-between;
+        }
+        .top-hud { display: flex; justify-content: space-between; width: 100%; align-items: flex-start; }
+        .stat-box { width: 22%; }
+        .bar-wrap {
+            width: 100%; height: 14px; background: #1a1a24;
+            border: 1px solid #444; border-radius: 7px; overflow: hidden; margin-top: 4px;
+        }
+        .bar-fill { height: 100%; width: 100%; transition: width 0.1s linear; }
+        .hp-fill { background: linear-gradient(90deg, #00ff88, #00b359); }
+        .gold-display { font-size: 26px; font-weight: 900; color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.6); }
+        .wanted-level { font-size: 22px; color: #ff0055; font-weight: 900; letter-spacing: 2px; }
+        
+        .interaction-prompt {
+            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.85); padding: 10px 22px; border-radius: 8px;
+            border: 2px solid #00ff88; font-size: 15px; color: #fff; font-weight: bold;
+            display: none; pointer-events: none;
+        }
 
+        /* Smartphone UI */
+        #phone {
+            position: absolute; bottom: 20px; right: 20px; width: 220px; height: 380px;
+            background: #111; border: 4px solid #333; border-radius: 25px;
+            box-shadow: 0 0 25px rgba(0,0,0,0.8); display: flex; flex-direction: column;
+            overflow: hidden; pointer-events: auto; transform: translateY(420px); transition: transform 0.3s ease-out;
+        }
+        #phone.open { transform: translateY(0); }
+        .phone-header { background: #222; padding: 8px; text-align: center; font-size: 11px; color: #aaa; }
+        .phone-screen { flex: 1; padding: 12px; background: #1a1a24; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .app-icon {
+            background: #2a2b3d; border-radius: 12px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; font-size: 10px; color: #fff;
+            cursor: pointer; transition: transform 0.1s; border: 1px solid #444;
+        }
+        .app-icon:hover { transform: scale(1.08); background: #3a3b52; }
+        .phone-btn {
+            position: absolute; bottom: 15px; right: 20px; background: #00ff88; color: #000;
+            padding: 8px 16px; border-radius: 20px; font-weight: bold; cursor: pointer;
+            pointer-events: auto; box-shadow: 0 0 10px rgba(0,255,136,0.5);
+        }
+
+        /* Modals & Shops */
+        .modal {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(8, 8, 12, 0.92); display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+            pointer-events: auto;
+        }
+        .shop-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; width: 80%; }
+        .shop-item {
+            background: #12131c; border: 1px solid #333; border-radius: 8px;
+            padding: 12px; display: flex; justify-content: space-between; align-items: center;
+        }
+        button {
+            padding: 10px 22px; font-size: 15px; font-weight: bold;
+            background: #00ff88; color: #000; border: none; border-radius: 4px;
+            cursor: pointer; transition: all 0.2s; box-shadow: 0 0 15px rgba(0,255,136,0.4);
+        }
+        button:hover { background: #fff; transform: scale(1.05); }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="1000" height="580"></canvas>
+
+    <div class="ui-layer">
+        <div class="top-hud">
+            <div class="stat-box">
+                <div style="color:#00ff88; font-weight:bold; font-size:12px;">HEALTH</div>
+                <div class="bar-wrap"><div id="hp-bar" class="bar-fill hp-fill"></div></div>
+            </div>
+            <div style="text-align:center;">
+                <div class="gold-display" id="gold-text">$500</div>
+                <div class="wanted-level" id="wanted-text"></div>
+            </div>
+            <div style="text-align:right;">
+                <div id="weapon-text" style="color:#00e5ff; font-weight:bold; font-size:16px;">Fists</div>
+                <div style="color:#aaa; font-size:11px;">Keys: 1=Fists 2=Pistol 3=Shotgun 4=SMG</div>
+            </div>
+        </div>
+
+        <div class="interaction-prompt" id="prompt">Press [E] to Talk</div>
+        <div class="phone-btn" onclick="togglePhone()">📱 PHONE (P)</div>
+    </div>
+
+    <!-- Smartphone UI -->
+    <div id="phone">
+        <div class="phone-header">iStick OS 18.2</div>
+        <div class="phone-screen">
+            <div class="app-icon" onclick="phoneAction('bank')"><span style="font-size:22px;">🏦</span>MazeBank</div>
+            <div class="app-icon" onclick="phoneAction('bribe')"><span style="font-size:22px;">⚖️</span>ClearStars</div>
+            <div class="app-icon" onclick="phoneAction('casino')"><span style="font-size:22px;">🎰</span>CasinoApp</div>
+            <div class="app-icon" onclick="phoneAction('gps')"><span style="font-size:22px;">🗺️</span>GPS Nav</div>
+        </div>
+    </div>
+
+    <!-- Start Modal -->
+    <div id="start-modal" class="modal">
+        <h1 style="font-size: 44px; color: #00ff88; text-shadow: 0 0 20px #00ff88;">STICKMAN CITY: ULTIMATE</h1>
+        <p style="color: #aaa; margin: 10px 0 25px;">Traffic & Pedestrians • Carjacking • Fist Fights • Smartphone • Casino</p>
+        <button onclick="startGame()">ENTER CITY</button>
+    </div>
+
+    <!-- Casino Shop Modal -->
+    <div id="casino-modal" class="modal" style="display: none;">
+        <h2 style="font-size: 32px; color: #ffd700;">DIAMOND CASINO SLOTS</h2>
+        <div style="font-size: 48px; margin: 20px 0;" id="slot-machine">❓ | ❓ | ❓</div>
+        <button onclick="spinSlots(50)">Spin Slots ($50)</button><br>
+        <button onclick="closeModal('casino-modal')" style="background:#ff0055; color:#fff; margin-top: 15px;">LEAVE CASINO</button>
+    </div>
+
+    <!-- Ammu-Nation Modal -->
+    <div id="shop-modal" class="modal" style="display: none;">
+        <h2 style="font-size: 32px; color: #ffd700;">AMMU-NATION WEAPONS</h2>
+        <div class="shop-grid">
+            <div class="shop-item">
+                <div><strong>Pistol</strong><br><span style="color:#aaa; font-size:12px;">Standard handgun</span></div>
+                <button onclick="buyWeapon('Pistol', 100)">$100</button>
+            </div>
+            <div class="shop-item">
+                <div><strong>Shotgun</strong><br><span style="color:#aaa; font-size:12px;">Heavy buckshot</span></div>
+                <button onclick="buyWeapon('Shotgun', 300)">$300</button>
+            </div>
+            <div class="shop-item">
+                <div><strong>SMG</strong><br><span style="color:#aaa; font-size:12px;">High fire rate</span></div>
+                <button onclick="buyWeapon('SMG', 500)">$500</button>
+            </div>
+            <div class="shop-item">
+                <div><strong>Body Armor</strong><br><span style="color:#aaa; font-size:12px;">Full Health Restore</span></div>
+                <button onclick="buyArmor(100)">$100</button>
+            </div>
+        </div>
+        <button onclick="closeModal('shop-modal')" style="background:#ff0055; color:#fff;">LEAVE SHOP</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let mouseX = 0, mouseY = 0;
+let cameraX = 0, cameraY = 0;
+let keys = {};
+let gameRunning = false;
+let phoneOpen = false;
+
+// Player Profile
+let player = {
+    x: 600, y: 600, angle: 0, hp: 100, maxHp: 100,
+    speed: 3.5, inVehicle: null, weapon: 'Fists',
+    unlockedWeapons: ['Fists']
+};
+
+let money = 500;
+let wantedLevel = 0;
+let gpsTarget = null;
+
+let bullets = [];
+let police = [];
+let peds = [];
+let vehicles = [];
+
+// City Layout
+const roads = [
+    { x: 0, y: 500, w: 2000, h: 100 }, // Horizontal Main Ave
+    { x: 500, y: 0, w: 100, h: 2000 }  // Vertical Main St
+];
+
+const locations = [
+    { name: 'Bank', x: 200, y: 350, w: 140, h: 100, color: '#666', type: 'bank' },
+    { name: 'Casino', x: 700, y: 350, w: 150, h: 110, color: '#aa3388', type: 'casino' },
+    { name: 'Ammu-Nation', x: 700, y: 650, w: 130, h: 90, color: '#337733', type: 'shop' }
+];
+
+window.addEventListener('keydown', e => {
+    let k = e.key.toLowerCase();
+    keys[k] = true;
+
+    if (k === 'p') togglePhone();
+    if (k === '1') setWeapon('Fists');
+    if (k === '2') setWeapon('Pistol');
+    if (k === '3') setWeapon('Shotgun');
+    if (k === '4') setWeapon('SMG');
+});
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+window.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    mouseX = e.clientX - rect.left;
+    mouseY = e.clientY - rect.top;
+});
+window.addEventListener('mousedown', e => {
+    if (e.button === 0 && gameRunning && !phoneOpen) attack();
+});
+
+function togglePhone() {
+    phoneOpen = !phoneOpen;
+    document.getElementById('phone').classList.toggle('open', phoneOpen);
+}
+
+function phoneAction(action) {
+    if (action === 'bribe') {
+        if (money >= 200 && wantedLevel > 0) {
+            money -= 200;
+            wantedLevel = Math.max(0, wantedLevel - 2);
+        }
+    } else if (action === 'bank') {
+        money += 100; // Fast loan
+    } else if (action === 'casino') {
+        openModal('casino-modal');
+    } else if (action === 'gps') {
+        gpsTarget = locations[1]; // GPS to Casino
+    }
+}
+
+function setWeapon(wep) {
+    if (player.unlockedWeapons.includes(wep)) {
+        player.weapon = wep;
+        document.getElementById('weapon-text').innerText = wep;
+    }
+}
+
+function attack() {
+    if (player.inVehicle) return;
+
+    let dirX = Math.cos(player.angle);
+    let dirY = Math.sin(player.angle);
+
+    if (player.weapon === 'Fists') {
+        // Melee Fist Hit
+        peds.forEach((ped, idx) => {
+            if (Math.hypot(ped.x - player.x, ped.y - player.y) < 35) {
+                ped.hp -= 25;
+                if (ped.hp <= 0) {
+                    money += 20;
+                    peds.splice(idx, 1);
+                    wantedLevel = Math.min(5, wantedLevel + 1);
+                }
+            }
+        });
+    } else if (player.weapon === 'Pistol') {
+        bullets.push({ x: player.x, y: player.y, vx: dirX * 11, vy: dirY * 11, damage: 30 });
+    } else if (player.weapon === 'Shotgun') {
+        for (let i = -2; i <= 2; i++) {
+            let sp = player.angle + (i * 0.1);
+            bullets.push({ x: player.x, y: player.y, vx: Math.cos(sp) * 10, vy: Math.sin(sp) * 10, damage: 18 });
+        }
+    } else if (player.weapon === 'SMG') {
+        bullets.push({ x: player.x, y: player.y, vx: dirX * 13, vy: dirY * 13, damage: 20 });
+    }
+}
+
+function initWorldPedsAndTraffic() {
+    // Populate Pedestrians
+    for (let i = 0; i < 20; i++) {
+        peds.push({
+            x: Math.random() * 1200, y: Math.random() * 1200,
+            hp: 30, speed: 1.2, vx: Math.random() - 0.5, vy: Math.random() - 0.5
+        });
+    }
+    // Populate Initial Traffic
+    for (let i = 0; i < 8; i++) {
+        vehicles.push({
+            x: 550, y: i * 200, angle: Math.PI / 2, speed: 2.5,
+            color: '#3388ff', isNPC: true
+        });
+    }
+}
+
+function updatePlayer() {
+    if (player.inVehicle) {
+        let car = player.inVehicle;
+        if (keys['w']) car.speed = Math.min(car.speed + 0.25, 8);
+        else if (keys['s']) car.speed = Math.max(car.speed - 0.2, -3);
+        else car.speed *= 0.96;
+
+        if (keys['a']) car.angle -= 0.05 * (car.speed / 5);
+        if (keys['d']) car.angle += 0.05 * (car.speed / 5);
+
+        car.x += Math.cos(car.angle) * car.speed;
+        car.y += Math.sin(car.angle) * car.speed;
+
+        player.x = car.x; player.y = car.y;
+
+        if (keys['f']) {
+            player.inVehicle = null;
+            player.x += 35; keys['f'] = false;
+        }
+    } else {
+        let moveX = 0, moveY = 0;
+        if (keys['w']) moveY -= 1; if (keys['s']) moveY += 1;
+        if (keys['a']) moveX -= 1; if (keys['d']) moveX += 1;
+
+        if (moveX !== 0 || moveY !== 0) {
+            let len = Math.hypot(moveX, moveY);
+            player.x += (moveX / len) * player.speed;
+            player.y += (moveY / len) * player.speed;
+        }
+
+        let screenX = player.x - cameraX;
+        let screenY = player.y - cameraY;
+        player.angle = Math.atan2(mouseY - screenY, mouseX - screenX);
+
+        if (keys['f']) {
+            vehicles.forEach(car => {
+                if (Math.hypot(car.x - player.x, car.y - player.y) < 45) {
+                    player.inVehicle = car; car.isNPC = false;
+                    keys['f'] = false;
+                }
+            });
+        }
+    }
+
+    cameraX = player.x - canvas.width / 2;
+    cameraY = player.y - canvas.height / 2;
+}
+
+function updateWorld() {
+    // Pedestrian AI Walking
+    peds.forEach(ped => {
+        ped.x += ped.vx; ped.y += ped.vy;
+        if (Math.random() < 0.02) { ped.vx = Math.random() - 0.5; ped.vy = Math.random() - 0.5; }
+    });
+
+    // Traffic AI
+    vehicles.forEach(car => {
+        if (car.isNPC) {
+            car.x += Math.cos(car.angle) * car.speed;
+            car.y += Math.sin(car.angle) * car.speed;
+            if (car.y > 1500) car.y = 0;
+        }
+    });
+
+    // Police Pursuit
+    if (wantedLevel > 0 && Math.random() < 0.01 && police.length < wantedLevel * 2) {
+        police.push({ x: player.x + 400, y: player.y + 400, hp: 50, speed: 3 });
+    }
+
+    police.forEach(cop => {
+        let angle = Math.atan2(player.y - cop.y, player.x - cop.x);
+        cop.x += Math.cos(angle) * cop.speed;
+        cop.y += Math.sin(angle) * cop.speed;
+
+        if (Math.hypot(player.x - cop.x, player.y - cop.y) < 25) player.hp -= 0.5;
+    });
+}
+
+function checkInteractions() {
+    let prompt = document.getElementById('prompt');
+    let nearLocation = null;
+
+    locations.forEach(loc => {
+        if (player.x > loc.x && player.x < loc.x + loc.w && player.y > loc.y && player.y < loc.y + loc.h) {
+            nearLocation = loc;
+        }
+    });
+
+    if (nearLocation) {
+        prompt.style.display = 'block';
+        prompt.innerText = `Press [E] to Enter ${nearLocation.name}`;
+
+        if (keys['e']) {
+            keys['e'] = false;
+            if (nearLocation.type === 'shop') openModal('shop-modal');
+            else if (nearLocation.type === 'casino') openModal('casino-modal');
+            else if (nearLocation.type === 'bank') { money += 400; wantedLevel = Math.min(5, wantedLevel + 2); }
+        }
+    } else {
+        prompt.style.display = 'none';
+    }
+}
+
+function spinSlots(cost) {
+    if (money < cost) return;
+    money -= cost;
+    const icons = ['🍒', '🍋', '💎', '7️⃣'];
+    let r1 = icons[Math.floor(Math.random()*4)];
+    let r2 = icons[Math.floor(Math.random()*4)];
+    let r3 = icons[Math.floor(Math.random()*4)];
+
+    document.getElementById('slot-machine').innerText = `${r1} | ${r2} | ${r3}`;
+    if (r1 === r2 && r2 === r3) money += 500;
+}
+
+function openModal(id) { gameRunning = false; document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; gameRunning = true; requestAnimationFrame(gameLoop); }
+
+function buyWeapon(wep, cost) {
+    if (money >= cost && !player.unlockedWeapons.includes(wep)) {
+        money -= cost;
+        player.unlockedWeapons.push(wep);
+        setWeapon(wep);
+    }
+}
+
+function buyArmor(cost) {
+    if (money >= cost) { money -= cost; player.hp = player.maxHp; }
+}
+
+function startGame() {
+    document.getElementById('start-modal').style.display = 'none';
+    initWorldPedsAndTraffic();
+    gameRunning = true;
+    requestAnimationFrame(gameLoop);
+}
+
+function gameLoop() {
+    if (!gameRunning) return;
+
+    updatePlayer();
+    updateWorld();
+    checkInteractions();
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Roads
+    ctx.fillStyle = '#22232a';
+    roads.forEach(r => ctx.fillRect(r.x - cameraX, r.y - cameraY, r.w, r.h));
+
+    // Draw Buildings
+    locations.forEach(loc => {
+        ctx.fillStyle = loc.color;
+        ctx.fillRect(loc.x - cameraX, loc.y - cameraY, loc.w, loc.h);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif';
+        ctx.fillText(loc.name, loc.x - cameraX + 10, loc.y - cameraY + 20);
+    });
+
+    // Draw Pedestrians
+    peds.forEach(ped => {
+        ctx.fillStyle = '#ffcc99';
+        ctx.beginPath(); ctx.arc(ped.x - cameraX, ped.y - cameraY, 7, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Draw Vehicles
+    vehicles.forEach(car => {
+        ctx.save();
+        ctx.translate(car.x - cameraX, car.y - cameraY);
+        ctx.rotate(car.angle);
+        ctx.fillStyle = car.color;
+        ctx.fillRect(-20, -11, 40, 22);
+        ctx.restore();
+    });
+
+    // Draw Player
+    if (!player.inVehicle) {
+        ctx.save();
+        ctx.translate(player.x - cameraX, player.y - cameraY);
+        ctx.rotate(player.angle);
+        ctx.fillStyle = '#00ff88';
+        ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(14, 0); ctx.stroke();
+        ctx.restore();
+    }
+
+    // Draw Police
+    police.forEach(cop => {
+        ctx.fillStyle = '#ff0055';
+        ctx.beginPath(); ctx.arc(cop.x - cameraX, cop.y - cameraY, 9, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Bullets Physics
+    bullets.forEach((b, idx) => {
+        b.x += b.vx; b.y += b.vy;
+        ctx.fillStyle = '#ffd700'; ctx.fillRect(b.x - cameraX, b.y - cameraY, 4, 4);
+
+        police.forEach((cop, cIdx) => {
+            if (Math.hypot(cop.x - b.x, cop.y - b.y) < 12) {
+                cop.hp -= b.damage; bullets.splice(idx, 1);
+                if (cop.hp <= 0) police.splice(cIdx, 1);
+            }
+        });
+    });
+
+    // Update HUD
+    document.getElementById('hp-bar').style.width = `${Math.max(0, player.hp)}%`;
+    document.getElementById('gold-text').innerText = `$${money}`;
+    document.getElementById('wanted-text').innerText = '★ '.repeat(wantedLevel);
+
+    if (player.hp <= 0) {
+        gameRunning = false;
+        document.getElementById('start-modal').style.display = 'flex';
+        return;
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+</script>
+</body>
+</html>
