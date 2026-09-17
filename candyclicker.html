@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sugar Rush: Candy Clicker Deluxe</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        body {
+            background: linear-gradient(135deg, #2b1055 0%, #7597de 100%);
+            color: #fff;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* LEFT PANEL: MAIN CANDY */
+        .left-panel {
+            flex: 1.1;
+            background: rgba(20, 10, 35, 0.6);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-right: 3px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            padding: 20px;
+        }
+
+        .stats-box { text-align: center; margin-bottom: 25px; }
+        .candy-count { font-size: 42px; font-weight: 900; color: #ff66b2; text-shadow: 0 0 15px rgba(255, 102, 178, 0.6); }
+        .cps-count { font-size: 18px; color: #ffd1dc; margin-top: 5px; font-weight: 600; }
+
+        .candy-wrapper { position: relative; cursor: pointer; }
+        
+        .big-candy {
+            width: 240px; height: 240px;
+            background: radial-gradient(circle at 30% 30%, #ff99dd, #ff007f);
+            border-radius: 50%;
+            box-shadow: 0 0 40px rgba(255, 0, 127, 0.6), inset -10px -10px 25px rgba(0,0,0,0.3);
+            position: relative;
+            transition: transform 0.05s ease;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 110px;
+        }
+
+        .big-candy:active { transform: scale(0.92); }
+
+        .floating-text {
+            position: absolute; color: #fff; font-size: 24px; font-weight: 900;
+            pointer-events: none; animation: floatUp 0.8s ease-out forwards;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8), 0 0 10px #ff007f;
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-70px) scale(1.3); }
+        }
+
+        /* RIGHT PANEL: 50 ITEM SHOP */
+        .right-panel {
+            flex: 1.3;
+            background: rgba(15, 8, 25, 0.85);
+            display: flex; flex-direction: column;
+        }
+
+        .shop-header {
+            background: rgba(0,0,0,0.3);
+            padding: 15px; text-align: center; font-size: 22px; font-weight: 900;
+            color: #ff99dd; letter-spacing: 1px; border-bottom: 2px solid rgba(255,255,255,0.08);
+        }
+
+        /* TAB NAVIGATION */
+        .tab-bar {
+            display: flex; background: rgba(0,0,0,0.4); border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .tab-btn {
+            flex: 1; padding: 12px 5px; background: transparent; border: none; color: #aaa;
+            font-weight: bold; cursor: pointer; font-size: 12px; transition: all 0.2s;
+        }
+        .tab-btn.active { color: #ff66b2; background: rgba(255, 102, 178, 0.15); border-bottom: 3px solid #ff66b2; }
+
+        .store-list { flex: 1; overflow-y: auto; padding: 12px; }
+
+        .store-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px; padding: 10px 14px; margin-bottom: 10px;
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; transition: all 0.2s;
+        }
+
+        .store-item:hover:not(.disabled) {
+            background: rgba(255, 102, 178, 0.2);
+            border-color: #ff66b2; transform: translateX(3px);
+        }
+
+        .store-item.disabled { opacity: 0.35; cursor: not-allowed; }
+        .store-item.owned-max { opacity: 0.6; cursor: default; border-color: #00ffcc; }
+
+        .item-icon { font-size: 28px; margin-right: 12px; }
+        .item-info { flex: 1; }
+        .item-info h4 { font-size: 15px; color: #fff; display: flex; align-items: center; gap: 8px; }
+        .item-info p { font-size: 11px; color: #bbb; margin-top: 2px; }
+        .item-cost { font-size: 13px; font-weight: bold; color: #ffcc00; margin-top: 4px; }
+        .item-count { font-size: 22px; font-weight: 900; color: rgba(255,255,255,0.3); margin-left: 10px; }
+
+        /* CONTROLS BAR */
+        .controls {
+            padding: 12px; background: rgba(0,0,0,0.5);
+            display: flex; gap: 10px; border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        .btn {
+            flex: 1; padding: 10px; background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 6px;
+            cursor: pointer; font-weight: bold; font-size: 12px; transition: 0.2s;
+        }
+        .btn:hover { background: rgba(255,255,255,0.2); }
+        .btn-danger { background: rgba(255, 50, 50, 0.3); }
+        .btn-danger:hover { background: rgba(255, 50, 50, 0.6); }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 102, 178, 0.4); border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <div class="left-panel">
+        <div class="stats-box">
+            <div class="candy-count" id="candy-display">0 Candies</div>
+            <div class="cps-count" id="cps-display">per second: 0</div>
+        </div>
+
+        <div class="candy-wrapper" id="candy-btn">
+            <div class="big-candy" id="candy-element">🍬</div>
+        </div>
+    </div>
+
+    <div class="right-panel">
+        <div class="shop-header">CANDY EMPORIUM (50 ITEMS)</div>
+        
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab('buildings')">🏭 Buildings (15)</button>
+            <button class="tab-btn" onclick="switchTab('clicks')">👆 Clicks (10)</button>
+            <button class="tab-btn" onclick="switchTab('flavors')">🍭 Flavors (15)</button>
+            <button class="tab-btn" onclick="switchTab('magic')">✨ Magic (10)</button>
+        </div>
+
+        <div class="store-list" id="store-container"></div>
+
+        <div class="controls">
+            <button class="btn" onclick="saveGame()">💾 Save Game</button>
+            <button class="btn btn-danger" onclick="resetGame()">🗑️ Reset Progress</button>
+        </div>
+    </div>
+
+    <script>
+        let candies = 0;
+        let candiesPerSecond = 0;
+        let baseClickPower = 1;
+        let clickMultiplier = 1;
+        let globalMultiplier = 1;
+        let activeTab = 'buildings';
+
+        // 50 COMPLETE UPGRADE SHOP ITEMS
+        const shopData = [
+            // --- TAB 1: BUILDINGS (15 Auto-producers) ---
+            { id: 'b1', tab: 'buildings', icon: '🐜', name: 'Candy Ants', baseCost: 15, cps: 0.2, count: 0, desc: 'Tiny helpers bringing sugar crumbs.' },
+            { id: 'b2', tab: 'buildings', icon: '🧒', name: 'Sugar Kid', baseCost: 100, cps: 1, count: 0, desc: 'Trading allowance for sweet treats.' },
+            { id: 'b3', tab: 'buildings', icon: '👵', name: 'Sweet Grandma', baseCost: 1100, cps: 8, count: 0, desc: 'Bakes hard candies with love.' },
+            { id: 'b4', tab: 'buildings', icon: '🌱', name: 'Gummy Garden', baseCost: 12000, cps: 47, count: 0, desc: 'Plants gummy bear bushes.' },
+            { id: 'b5', tab: 'buildings', icon: '🍭', name: 'Lollipop Grove', baseCost: 130000, cps: 260, count: 0, desc: 'Trees made of pure candy cane.' },
+            { id: 'b6', tab: 'buildings', icon: '🏭', name: 'Candy Factory', baseCost: 1400000, cps: 1400, count: 0, desc: 'Industrial assembly line of sweets.' },
+            { id: 'b7', tab: 'buildings', icon: '⛏️', name: 'Fudge Mine', baseCost: 20000000, cps: 7800, count: 0, desc: 'Extracts rich chocolate veins.' },
+            { id: 'b8', tab: 'buildings', icon: '🧪', name: 'Sugar Lab', baseCost: 330000000, cps: 44000, count: 0, desc: 'Synthesizing super-sweet molecules.' },
+            { id: 'b9', tab: 'buildings', icon: '🚀', name: 'Candy Rocket', baseCost: 5100000000, cps: 260000, count: 0, desc: 'Imports exotic space taffy.' },
+            { id: 'b10', tab: 'buildings', icon: '🌋', name: 'Caramel Volcano', baseCost: 75000000000, cps: 1600000, count: 0, desc: 'Erupts molten golden syrup.' },
+            { id: 'b11', tab: 'buildings', icon: '🛸', name: 'Alien Abduct-O-Mat', baseCost: 1000000000000, cps: 10000000, count: 0, desc: 'Beams down cosmic candies.' },
+            { id: 'b12', tab: 'buildings', icon: '🏛️', name: 'Candy Temple', baseCost: 14000000000000, cps: 65000000, count: 0, desc: 'Prays to the Sugar Deities.' },
+            { id: 'b13', tab: 'buildings', icon: '🌌', name: 'Sugar Wormhole', baseCost: 170000000000000, cps: 430000000, count: 0, desc: 'Pulling candy from parallel universes.' },
+            { id: 'b14', tab: 'buildings', icon: '🤖', name: 'AI Sugar Overlord', baseCost: 2100000000000000, cps: 2900000000, count: 0, desc: 'Optimizes global candy production.' },
+            { id: 'b15', tab: 'buildings', icon: '👑', name: 'Confection Dynasty', baseCost: 26000000000000000, cps: 21000000000, count: 0, desc: 'Rule the entire sugary universe.' },
+
+            // --- TAB 2: CLICKS (10 Click Upgrades) ---
+            { id: 'c1', tab: 'clicks', icon: '👉', name: 'Sticky Fingers', baseCost: 50, clickAdd: 1, count: 0, desc: '+1 candy per click.' },
+            { id: 'c2', tab: 'clicks', icon: '🧤', name: 'Sugar Gloves', baseCost: 500, clickAdd: 5, count: 0, desc: '+5 candies per click.' },
+            { id: 'c3', tab: 'clicks', icon: '🥊', name: 'Candy Punch', baseCost: 5000, clickAdd: 25, count: 0, desc: '+25 candies per click.' },
+            { id: 'c4', tab: 'clicks', icon: '🪄', name: 'Candy Wand', baseCost: 50000, clickAdd: 150, count: 0, desc: '+150 candies per click.' },
+            { id: 'c5', tab: 'clicks', icon: '⚡', name: 'Taffy Tap', baseCost: 500000, clickAdd: 800, count: 0, desc: '+800 candies per click.' },
+            { id: 'c6', tab: 'clicks', icon: '🔨', name: 'Jawbreaker Mallet', baseCost: 5000000, clickAdd: 4000, count: 0, desc: '+4,000 candies per click.' },
+            { id: 'c7', tab: 'clicks', icon: '⚙️', name: 'Auto-Pointer', baseCost: 50000000, clickAdd: 20000, count: 0, desc: '+20,000 candies per click.' },
+            { id: 'c8', tab: 'clicks', icon: '💎', name: 'Diamond Stylus', baseCost: 500000000, clickAdd: 120000, count: 0, desc: '+120,000 candies per click.' },
+            { id: 'c9', tab: 'clicks', icon: '🌟', name: 'Starlight Tap', baseCost: 5000000000, clickAdd: 800000, count: 0, desc: '+800,000 candies per click.' },
+            { id: 'c10', tab: 'clicks', icon: '🪐', name: 'Cosmic Touch', baseCost: 50000000000, clickAdd: 5000000, count: 0, desc: '+5,000,000 candies per click.' },
+
+            // --- TAB 3: FLAVORS (15 Candy Flavors - One-time Purchased Multipliers) ---
+            { id: 'f1', tab: 'flavors', icon: '🍒', name: 'Cherry Powder', baseCost: 200, mult: 1.05, max: 1, count: 0, desc: '+5% total candy yield.' },
+            { id: 'f2', tab: 'flavors', icon: '🍋', name: 'Sour Lemon Zest', baseCost: 1000, mult: 1.05, max: 1, count: 0, desc: '+5% total candy yield.' },
+            { id: 'f3', tab: 'flavors', icon: '🍏', name: 'Green Apple Burst', baseCost: 5000, mult: 1.08, max: 1, count: 0, desc: '+8% total candy yield.' },
+            { id: 'f4', tab: 'flavors', icon: '🍇', name: 'Grape Fusion', baseCost: 25000, mult: 1.10, max: 1, count: 0, desc: '+10% total candy yield.' },
+            { id: 'f5', tab: 'flavors', icon: '🍉', name: 'Watermelon Splash', baseCost: 100000, mult: 1.12, max: 1, count: 0, desc: '+12% total candy yield.' },
+            { id: 'f6', tab: 'flavors', icon: '🍓', name: 'Strawberry Essence', baseCost: 500000, mult: 1.15, max: 1, count: 0, desc: '+15% total candy yield.' },
+            { id: 'f7', tab: 'flavors', icon: '🫐', name: 'Blue Raspberry', baseCost: 2500000, mult: 1.15, max: 1, count: 0, desc: '+15% total candy yield.' },
+            { id: 'f8', tab: 'flavors', icon: '🍍', name: 'Tropical Pineapple', baseCost: 10000000, mult: 1.20, max: 1, count: 0, desc: '+20% total candy yield.' },
+            { id: 'f9', tab: 'flavors', icon: '🥥', name: 'Coconut Dream', baseCost: 50000000, mult: 1.20, max: 1, count: 0, desc: '+20% total candy yield.' },
+            { id: 'f10', tab: 'flavors', icon: '🍫', name: 'Dark Cocoa', baseCost: 250000000, mult: 1.25, max: 1, count: 0, desc: '+25% total candy yield.' },
+            { id: 'f11', tab: 'flavors', icon: '🍿', name: 'Butter Caramel', baseCost: 1000000000, mult: 1.25, max: 1, count: 0, desc: '+25% total candy yield.' },
+            { id: 'f12', tab: 'flavors', icon: '☕', name: 'Espresso Bean', baseCost: 5000000000, mult: 1.30, max: 1, count: 0, desc: '+30% total candy yield.' },
+            { id: 'f13', tab: 'flavors', icon: '🌶️', name: 'Spicy Cinnamon', baseCost: 25000000000, mult: 1.35, max: 1, count: 0, desc: '+35% total candy yield.' },
+            { id: 'f14', tab: 'flavors', icon: '🧊', name: 'Menthol Frost', baseCost: 100000000000, mult: 1.40, max: 1, count: 0, desc: '+40% total candy yield.' },
+            { id: 'f15', tab: 'flavors', icon: '🌈', name: 'Rainbow Nectar', baseCost: 500000000000, mult: 1.50, max: 1, count: 0, desc: '+50% total candy yield!' },
+
+            // --- TAB 4: MAGIC (10 Sugar Spells & Artifacts) ---
+            { id: 'm1', tab: 'magic', icon: '🔮', name: 'Sugar Crystal Ball', baseCost: 1500, mult: 1.10, max: 1, count: 0, desc: 'Predicts sweet fortunes (+10%).' },
+            { id: 'm2', tab: 'magic', icon: '📜', name: 'Ancient Recipe', baseCost: 15000, mult: 1.15, max: 1, count: 0, desc: 'Lost secrets of pastry masters (+15%).' },
+            { id: 'm3', tab: 'magic', icon: '🧪', name: 'Elixir of Sweetness', baseCost: 100000, mult: 1.20, max: 1, count: 0, desc: 'Doubles click efficiency.' },
+            { id: 'm4', tab: 'magic', icon: '🕯️', name: 'Candy Candle', baseCost: 750000, mult: 1.20, max: 1, count: 0, desc: 'Burns with vanilla aroma (+20%).' },
+            { id: 'm5', tab: 'magic', icon: '🧿', name: 'Amulet of Taffy', baseCost: 5000000, mult: 1.25, max: 1, count: 0, desc: 'Protects production (+25%).' },
+            { id: 'm6', tab: 'magic', icon: '🦄', name: 'Unicorn Horn Powder', baseCost: 50000000, mult: 1.30, max: 1, count: 0, desc: 'Magical candy boost (+30%).' },
+            { id: 'm7', tab: 'magic', icon: '🌠', name: 'Fallen Sugar Star', baseCost: 500000000, mult: 1.35, max: 1, count: 0, desc: 'Pure cosmic sucrose (+35%).' },
+            { id: 'm8', tab: 'magic', icon: '⏳', name: 'Time Taffy Hourglass', baseCost: 5000000000, mult: 1.40, max: 1, count: 0, desc: 'Accelerates production (+40%).' },
+            { id: 'm9', tab: 'magic', icon: '👑', name: 'Crown of Cocoa', baseCost: 50000000000, mult: 1.50, max: 1, count: 0, desc: 'Supreme candy majesty (+50%).' },
+            { id: 'm10', tab: 'magic', icon: 'INFINITY', name: 'Infinity Jawbreaker', baseCost: 1000000000000, mult: 2.00, max: 1, count: 0, desc: 'DOUBLES all candy production!' }
+        ];
+
+        // DOM ELEMENTS
+        const candyDisplay = document.getElementById('candy-display');
+        const cpsDisplay = document.getElementById('cps-display');
+        const candyBtn = document.getElementById('candy-btn');
+        const storeContainer = document.getElementById('store-container');
+
+        // CLICK BIG CANDY LOGIC
+        candyBtn.addEventListener('click', (e) => {
+            let totalClickPower = getClickPower();
+            candies += totalClickPower;
+            createFloatingText(e, `+${formatNumber(totalClickPower)}`);
+            updateDisplay();
+        });
+
+        function getClickPower() {
+            let add = baseClickPower;
+            shopData.filter(i => i.tab === 'clicks').forEach(i => {
+                add += (i.clickAdd || 0) * i.count;
+            });
+            return add * globalMultiplier;
+        }
+
+        function createFloatingText(e, text) {
+            const el = document.createElement('div');
+            el.className = 'floating-text';
+            el.innerText = text;
+            const rect = candyBtn.getBoundingClientRect();
+            el.style.left = `${e.clientX - rect.left + (Math.random() * 20 - 10)}px`;
+            el.style.top = `${e.clientY - rect.top + (Math.random() * 20 - 10)}px`;
+            candyBtn.appendChild(el);
+            setTimeout(() => el.remove(), 800);
+        }
+
+        function switchTab(tabName) {
+            activeTab = tabName;
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.innerText.toLowerCase().includes(tabName));
+            });
+            renderStore();
+        }
+
+        function getItemCost(item) {
+            if (item.max === 1) return item.baseCost;
+            return Math.ceil(item.baseCost * Math.pow(1.15, item.count));
+        }
+
+        function renderStore() {
+            storeContainer.innerHTML = '';
+            const filtered = shopData.filter(item => item.tab === activeTab);
+
+            filtered.forEach(item => {
+                const cost = getItemCost(item);
+                const isMaxed = item.max === 1 && item.count >= 1;
+                const canAfford = candies >= cost && !isMaxed;
+
+                const div = document.createElement('div');
+                div.className = `store-item ${!canAfford && !isMaxed ? 'disabled' : ''} ${isMaxed ? 'owned-max' : ''}`;
+                div.onclick = () => buyItem(item.id);
+
+                div.innerHTML = `
+                    <div class="item-icon">${item.icon}</div>
+                    <div class="item-info">
+                        <h4>${item.name}</h4>
+                        <p>${item.desc}</p>
+                        <div class="item-cost">${isMaxed ? '✅ OWNED' : '🍬 ' + formatNumber(cost)}</div>
+                    </div>
+                    <div class="item-count">${isMaxed ? 'MAX' : item.count}</div>
+                `;
+                storeContainer.appendChild(div);
+            });
+        }
+
+        function buyItem(id) {
+            const item = shopData.find(i => i.id === id);
+            if (!item) return;
+
+            const cost = getItemCost(item);
+            const isMaxed = item.max === 1 && item.count >= 1;
+
+            if (candies >= cost && !isMaxed) {
+                candies -= cost;
+                item.count++;
+                recalculateStats();
+                renderStore();
+                updateDisplay();
+            }
+        }
+
+        function recalculateStats() {
+            // Global Multipliers calculation from Flavors & Magic
+            globalMultiplier = 1;
+            shopData.filter(i => i.mult && i.count > 0).forEach(i => {
+                globalMultiplier *= i.mult;
+            });
+
+            // Base CPS from Buildings
+            let rawCPS = 0;
+            shopData.filter(i => i.tab === 'buildings').forEach(i => {
+                rawCPS += i.count * i.cps;
+            });
+
+            candiesPerSecond = rawCPS * globalMultiplier;
+        }
+
+        function formatNumber(num) {
+            if (num >= 1e15) return (num / 1e15).toFixed(2) + ' Quadrillion';
+            if (num >= 1e12) return (num / 1e12).toFixed(2) + ' Trillion';
+            if (num >= 1e9) return (num / 1e9).toFixed(2) + ' Billion';
+            if (num >= 1e6) return (num / 1e6).toFixed(2) + ' Million';
+            if (num >= 1e3) return (num / 1e3).toFixed(1) + 'k';
+            return Math.floor(num).toLocaleString();
+        }
+
+        function updateDisplay() {
+            candyDisplay.innerText = `${formatNumber(Math.floor(candies))} Candies`;
+            cpsDisplay.innerText = `per second: ${formatNumber(candiesPerSecond.toFixed(1))}`;
+
+            // Refresh affordance states in UI
+            const elements = storeContainer.querySelectorAll('.store-item');
+            const filtered = shopData.filter(i => i.tab === activeTab);
+
+            filtered.forEach((item, index) => {
+                if (elements[index]) {
+                    const cost = getItemCost(item);
+                    const isMaxed = item.max === 1 && item.count >= 1;
+                    if (candies < cost && !isMaxed) elements[index].classList.add('disabled');
+                    else if (!isMaxed) elements[index].classList.remove('disabled');
+                }
+            });
+        }
+
+        // GAME LOOP (10 Ticks / sec)
+        setInterval(() => {
+            if (candiesPerSecond > 0) {
+                candies += candiesPerSecond / 10;
+                updateDisplay();
+            }
+        }, 100);
+
+        function saveGame() {
+            const saveData = {
+                candies: candies,
+                shop: shopData.map(i => ({ id: i.id, count: i.count }))
+            };
+            localStorage.setItem('candy_clicker_save_50', JSON.stringify(saveData));
+            alert('Game Progress Saved!');
+        }
+
+        function loadGame() {
+            const raw = localStorage.getItem('candy_clicker_save_50');
+            if (raw) {
+                try {
+                    const parsed = JSON.parse(raw);
+                    candies = parsed.candies || 0;
+                    if (parsed.shop) {
+                        parsed.shop.forEach(saved => {
+                            const match = shopData.find(i => i.id === saved.id);
+                            if (match) match.count = saved.count;
+                        });
+                    }
+                } catch(e) { console.error('Save file corrupt', e); }
+            }
+            recalculateStats();
+            renderStore();
+            updateDisplay();
+        }
+
+        function resetGame() {
+            if (confirm('Are you sure you want to reset all your candy progress?')) {
+                localStorage.removeItem('candy_clicker_save_50');
+                location.reload();
+            }
+        }
+
+        // Auto Save every 30 seconds
+        setInterval(saveGame, 30000);
+
+        // Start
+        loadGame();
+    </script>
+</body>
+</html>
